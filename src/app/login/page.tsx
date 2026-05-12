@@ -13,7 +13,7 @@ type Tab = 'signin' | 'signup';
 export default function LoginPage() {
   const router = useRouter();
   const { t, lang, setLang } = useLanguage();
-  const { signIn, signUp, user, loading: authLoading } = useAuth();
+  const { signIn, signUp, user, loading: authLoading, notConfigured } = useAuth();
 
   const [tab, setTab] = useState<Tab>('signin');
   const [email, setEmail] = useState('');
@@ -146,6 +146,17 @@ export default function LoginPage() {
 
             {/* Form body */}
             <div className="px-7 py-6">
+              {/* Misconfiguration banner — shown when env vars are missing/wrong */}
+              {notConfigured && (
+                <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 text-xs text-amber-800 font-medium space-y-1">
+                  <p className="font-bold">⚠️ Supabase not configured</p>
+                  <p>Set these in <strong>Vercel → Settings → Environment Variables</strong>:</p>
+                  <p className="font-mono break-all">NEXT_PUBLIC_SUPABASE_URL</p>
+                  <p className="font-mono break-all">NEXT_PUBLIC_SUPABASE_ANON_KEY</p>
+                  <p className="mt-1">URL format: <span className="font-mono">https://&lt;project-id&gt;.supabase.co</span></p>
+                </div>
+              )}
+
               {/* Success banner */}
               {success && (
                 <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs text-emerald-700 font-medium">
