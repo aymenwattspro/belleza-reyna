@@ -66,12 +66,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
       // Any error (table not found, network, RLS) → default to NOT approved
       if (error || !data) {
+        console.log('Approval check error:', error?.message || 'No data found');
         setApproved(false);
         return;
       }
       setApproved((data as { approved?: boolean })?.approved === true);
-    } catch {
+    } catch (err) {
       // Network failure or any unexpected error → default to NOT approved
+      console.log('Approval check failed:', err);
       setApproved(false);
     }
   }, [supabase]);
@@ -83,11 +85,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Add timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.log('Auth initialization timeout - forcing completion');
+        setLoading(false);
+      }
+    }, 5000); // 5 second timeout
+
     // Get the current session on mount, then fetch approval
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       await fetchApproval(session?.user?.id ?? null);
+      clearTimeout(timeout);
+      setLoading(false);
+    }).catch((err) => {
+      console.log('Session fetch failed:', err);
+      clearTimeout(timeout);
       setLoading(false);
     });
 
@@ -104,7 +119,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally run only once
 
