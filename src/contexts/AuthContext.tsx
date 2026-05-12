@@ -48,12 +48,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setApproved(false);
       return;
     }
-    const { data } = await supabase
-      .from('profiles')
-      .select('approved')
-      .eq('id', userId)
-      .single();
-    setApproved(data?.approved === true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('approved')
+        .eq('id', userId)
+        .single();
+      // Any error (table not found, network, RLS) → default to NOT approved
+      if (error || !data) {
+        setApproved(false);
+        return;
+      }
+      setApproved((data as { approved?: boolean })?.approved === true);
+    } catch {
+      // Network failure or any unexpected error → default to NOT approved
+      setApproved(false);
+    }
   }, [supabase]);
 
   useEffect(() => {
@@ -74,6 +84,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth state changes (login / logout / token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        // Re-enter loading state so the login page useEffect (which checks
+        // !authLoading before redirecting) waits for the full approval check.
+        setLoading(true);
         setSession(session);
         setUser(session?.user ?? null);
         await fetchApproval(session?.user?.id ?? null);

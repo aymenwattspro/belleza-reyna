@@ -62,6 +62,42 @@ This will create 5 tables:
 
 ---
 
+## Step 4b — Run the User Approval Migration ⚠️ REQUIRED
+
+> **This step is required** for the user access control system to work. Without it, new accounts will always be blocked from accessing the app.
+
+1. In your Supabase Dashboard, go to **SQL Editor** (left sidebar).
+2. Click **"New Query"**.
+3. Open the file **`supabase-approval-migration.sql`** from the root of this project.
+4. **Copy the entire file contents** and paste them into the SQL Editor.
+5. Click **"Run"**.
+
+This creates:
+| Object | Purpose |
+|---|---|
+| `profiles` table | Stores each user's approval status (`approved = false` by default) |
+| Auto-create trigger | Automatically creates a profile row for every new signup with `approved = false` |
+| RLS policy | Each user can read only their own profile |
+
+### 🔐 How to approve a user
+
+After a user signs up, they will see a **"Access Pending Approval"** screen. To grant them access:
+
+1. Go to your **Supabase Dashboard** → **Table Editor** → `profiles` table.
+2. Find the row for the user you want to approve (check the `email` column).
+3. Click the row to edit it.
+4. Set the `approved` column to **`true`**.
+5. Click **Save**.
+
+The user will be able to access the app on their next page load (or immediately if they are already on the pending screen).
+
+> 💡 **Tip**: You can also run this SQL to approve a specific user quickly:
+> ```sql
+> UPDATE public.profiles SET approved = true WHERE email = 'user@example.com';
+> ```
+
+---
+
 ## Step 5 — Configure Email Confirmation (Optional)
 
 By default, Supabase sends a confirmation email when a user signs up.

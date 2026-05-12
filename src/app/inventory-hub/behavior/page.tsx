@@ -34,6 +34,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useInventory, PopularityScore } from '@/contexts/InventoryContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { parseInventoryCSV, parseConfigFile, mergeWithConfig } from '@/lib/utils/timeline-parsers';
 import { generateFileHash } from '@/lib/utils/file-hash';
 import { format } from 'date-fns';
@@ -41,6 +42,7 @@ import { es } from 'date-fns/locale';
 
 export default function BehaviorPage() {
   const { snapshots, popularityScores, addSnapshot, deleteSnapshot, refreshData, clearAllData, loading, getProductHistory, checkFileDuplicate } = useInventory();
+  const { t } = useLanguage();
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [inventoryFile, setInventoryFile] = useState<File | null>(null);
@@ -173,9 +175,9 @@ export default function BehaviorPage() {
 
   // Movement label helper
   const getMovementLabel = (score: PopularityScore) => {
-    if (score.overallScore >= 70) return { label: 'Quick Sale', icon: Zap, color: 'emerald', bg: 'bg-emerald-100', text: 'text-emerald-700' };
-    if (score.overallScore >= 30) return { label: 'Stable', icon: Activity, color: 'blue', bg: 'bg-blue-100', text: 'text-blue-700' };
-    return { label: 'Slow Sale', icon: Ghost, color: 'gray', bg: 'bg-gray-100', text: 'text-gray-600' };
+    if (score.overallScore >= 70) return { label: t('behavior_quick_sale'), icon: Zap, color: 'emerald', bg: 'bg-emerald-100', text: 'text-emerald-700' };
+    if (score.overallScore >= 30) return { label: t('behavior_stable'), icon: Activity, color: 'blue', bg: 'bg-blue-100', text: 'text-blue-700' };
+    return { label: t('behavior_slow_sale'), icon: Ghost, color: 'gray', bg: 'bg-gray-100', text: 'text-gray-600' };
   };
 
   // Chart data for selected product
@@ -203,10 +205,10 @@ export default function BehaviorPage() {
               </Link>
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Product Behavior
+                  {t('behavior_title')}
                 </h1>
                 <p className="text-sm text-gray-500">
-                  {snapshots.length} snapshots • {popularityScores.length} productos
+                  {snapshots.length} {t('behavior_snapshots')} · {popularityScores.length} {t('behavior_products')}
                 </p>
               </div>
             </div>
@@ -227,7 +229,7 @@ export default function BehaviorPage() {
       <main className="max-w-7xl mx-auto px-6 py-6">
         {/* Upload Zone */}
         <div className="bg-white/90 backdrop-blur-sm rounded-2xl border border-gray-200/50 shadow-lg p-6 mb-6">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Importar Nuevo Snapshot</h2>
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">{t('behavior_import_new')}</h2>
 
           <div
             className={cn(
@@ -319,8 +321,8 @@ export default function BehaviorPage() {
         {snapshots.length < 2 ? (
           <div className="text-center py-16">
             <Database size={64} className="mx-auto text-gray-300 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-600 mb-2">Se necesitan más datos</h3>
-            <p className="text-gray-500">Importa al menos 2 snapshots para analizar comportamiento.</p>
+            <h3 className="text-lg font-semibold text-gray-600 mb-2">{t('behavior_need_2')}</h3>
+            <p className="text-gray-500">{t('behavior_need_2_msg')}</p>
           </div>
         ) : (
           <div className="grid lg:grid-cols-3 gap-6">
@@ -331,7 +333,7 @@ export default function BehaviorPage() {
                 <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Buscar producto..."
+                  placeholder={t('behavior_search')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
@@ -341,16 +343,16 @@ export default function BehaviorPage() {
               {/* Scores Table */}
               <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                 <div className="p-4 border-b border-gray-100">
-                  <h3 className="font-semibold text-gray-700">Popularity Scores</h3>
+                  <h3 className="font-semibold text-gray-700">{t('behavior_popularity')}</h3>
                 </div>
                 <div className="max-h-[500px] overflow-y-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50 sticky top-0">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Producto</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500">Tipo</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">Score</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">Ventas</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">{t('behavior_product')}</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500">{t('behavior_type')}</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">{t('behavior_score')}</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500">{t('behavior_sales')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -430,26 +432,26 @@ export default function BehaviorPage() {
                   {/* Stats Grid */}
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="bg-gray-50 p-3 rounded-lg">
-                      <p className="text-gray-500 text-xs">Ventas Totales</p>
+                      <p className="text-gray-500 text-xs">{t('behavior_total_sales')}</p>
                       <p className="font-bold text-gray-800">{selectedScore.totalSales}</p>
                     </div>
                     <div className="bg-gray-50 p-3 rounded-lg">
-                      <p className="text-gray-500 text-xs">Velocidad</p>
+                      <p className="text-gray-500 text-xs">{t('behavior_velocity')}</p>
                       <p className="font-bold text-gray-800">{selectedScore.salesVelocity.toFixed(1)}/sem</p>
                     </div>
                     <div className="bg-gray-50 p-3 rounded-lg">
-                      <p className="text-gray-500 text-xs">Consistencia</p>
+                      <p className="text-gray-500 text-xs">{t('behavior_consistency')}</p>
                       <p className="font-bold text-gray-800">{selectedScore.consistencyScore.toFixed(0)}%</p>
                     </div>
                     <div className="bg-gray-50 p-3 rounded-lg">
-                      <p className="text-gray-500 text-xs">Tendencia</p>
+                      <p className="text-gray-500 text-xs">{t('behavior_trend')}</p>
                       <p className={cn(
                         "font-bold",
                         selectedScore.trend === 'rising' ? "text-emerald-600" :
                         selectedScore.trend === 'falling' ? "text-red-500" : "text-gray-600"
                       )}>
-                        {selectedScore.trend === 'rising' ? '↑ Subiendo' :
-                         selectedScore.trend === 'falling' ? '↓ Bajando' : '→ Estable'}
+                        {selectedScore.trend === 'rising' ? t('behavior_rising') :
+                         selectedScore.trend === 'falling' ? t('behavior_falling') : t('behavior_stable_trend')}
                       </p>
                     </div>
                   </div>
@@ -457,7 +459,7 @@ export default function BehaviorPage() {
               ) : (
                 <div className="text-center py-12 text-gray-400">
                   <TrendingUp size={48} className="mx-auto mb-4" />
-                  <p>Selecciona un producto para ver detalles</p>
+                  <p>{t('behavior_select')}</p>
                 </div>
               )}
             </div>
@@ -489,13 +491,13 @@ export default function BehaviorPage() {
                   onClick={() => setDeleteConfirmSnapshot(null)}
                   className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
                 >
-                  Cancelar
+                  {t('cancel')}
                 </button>
                 <button
                   onClick={() => handleDeleteSnapshot(deleteConfirmSnapshot, snapshot?.fileName || '')}
                   className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
                 >
-                  Eliminar
+                  {t('delete')}
                 </button>
               </div>
             </div>
@@ -507,20 +509,20 @@ export default function BehaviorPage() {
       {showClearConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-lg font-bold text-gray-800 mb-2">¿Eliminar todos los datos?</h3>
-            <p className="text-gray-500 mb-4">Esta acción eliminará todos los snapshots permanentemente.</p>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">{t('hub_reset_data')}</h3>
+            <p className="text-gray-500 mb-4">{t('hub_need_2_snapshots')}</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowClearConfirm(false)}
                 className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
               >
-                Cancelar
+                {t('cancel')}
               </button>
               <button
                 onClick={() => { clearAllData(); setShowClearConfirm(false); }}
                 className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
               >
-                Eliminar
+                {t('delete')}
               </button>
             </div>
           </div>
