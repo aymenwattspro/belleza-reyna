@@ -12,17 +12,15 @@ const PUBLIC_PATHS = ['/login'];
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, notConfigured } = useAuth();
+  const { user, loading } = useAuth();
 
   const isPublic = PUBLIC_PATHS.includes(pathname);
 
   useEffect(() => {
-    // Skip auth redirect when Supabase is not configured yet
-    if (notConfigured) return;
     if (!loading && !user && !isPublic) {
       router.replace('/login');
     }
-  }, [loading, user, isPublic, router, notConfigured]);
+  }, [loading, user, isPublic, router]);
 
   // Always render public paths immediately (login page)
   if (isPublic) {
@@ -34,8 +32,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Show spinner while Supabase resolves auth (only when configured)
-  if (!notConfigured && (loading || !user)) {
+  // Show spinner while Supabase resolves auth
+  if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full animate-spin" />
