@@ -75,10 +75,12 @@ export type Database = {
           id: string;
           email: string | null;
           full_name: string | null;
-          approved: boolean;
+          is_approved: boolean;
+          role: string;
           created_at: string;
+          updated_at: string;
         };
-        Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'created_at'>;
+        Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
       };
     };

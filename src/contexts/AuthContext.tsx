@@ -65,21 +65,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       console.log('Fetching approval for userId:', userId);
-      // Use RPC to call a function that can read from auth.users
-      const { data, error } = await supabase.rpc('get_user_approval', { 
-        user_id: userId 
-      } as any);
       
-      console.log('Approval query result:', { data, error });
+      // First try to get profile directly (more reliable than RPC)
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_approved')
+        .eq('id', userId)
+        .single();
       
-      // Any error → default to NOT approved
-      if (error || data === null) {
-        console.log('Approval check error:', error?.message || 'No data found');
+      console.log('Profile query result:', { profileData, profileError });
+      
+      // If profile doesn't exist or there's an error, create it and set approved to false
+      if (profileError || !profileData) {
+        console.log('Profile not found or error, creating new profile');
+        
+        // Try to create the profile
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .upsert({ 
+            id: userId, 
+            is_approved: false,
+            updated_at: new Date().toISOString()
+          } as any);
+        
+        if (insertError) {
+          console.log('Failed to create profile:', insertError);
+        }
+        
         setApproved(false);
         return;
       }
       
-      const isApproved = data === true;
+      const isApproved = (profileData as any).is_approved === true;
       console.log('User approval status:', isApproved);
       setApproved(isApproved);
     } catch (err) {
