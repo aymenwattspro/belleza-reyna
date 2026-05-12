@@ -70,6 +70,17 @@ export type Database = {
         Insert: Omit<Database['public']['Tables']['product_settings']['Row'], 'id' | 'updated_at'>;
         Update: Partial<Database['public']['Tables']['product_settings']['Insert']>;
       };
+      profiles: {
+        Row: {
+          id: string;
+          email: string | null;
+          full_name: string | null;
+          approved: boolean;
+          created_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'created_at'>;
+        Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

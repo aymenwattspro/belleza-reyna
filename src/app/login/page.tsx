@@ -62,7 +62,7 @@ export default function LoginPage() {
     if (err) {
       setError(err.message);
     } else {
-      setSuccess('Account created! Check your email to confirm, then sign in.');
+      setSuccess('Account created! An admin must approve your access before you can use the app. You will be notified once approved.');
       setTab('signin');
     }
     setLoading(false);

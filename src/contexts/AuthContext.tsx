@@ -9,10 +9,15 @@ import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
-  /** True while Supabase is resolving the initial session. */
+  /** True while Supabase is resolving the initial session AND profile. */
   loading: boolean;
-  /** True when NEXT_PUBLIC_SUPABASE_URL / ANON_KEY are not set yet. */
+  /** True when NEXT_PUBLIC_SUPABASE_URL / ANON_KEY are not set / invalid. */
   notConfigured: boolean;
+  /**
+   * True once an admin has set approved = true in the profiles table.
+   * Authenticated users with approved = false see the "pending approval" screen.
+   */
+  approved: boolean;
   signIn: (email: string, password: string) => Promise<AuthError | null>;
   signUp: (email: string, password: string, fullName?: string) => Promise<AuthError | null>;
   signOut: () => Promise<void>;
@@ -32,9 +37,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [approved, setApproved] = useState(false);
 
   const configured = isSupabaseConfigured();
   const supabase = configured ? getSupabaseClient() : null;
+
+  // ── Fetch approval status from profiles table ────────────────────────────────
+  const fetchApproval = useCallback(async (userId: string | null) => {
+    if (!supabase || !userId) {
+      setApproved(false);
+      return;
+    }
+    const { data } = await supabase
+      .from('profiles')
+      .select('approved')
+      .eq('id', userId)
+      .single();
+    setApproved(data?.approved === true);
+  }, [supabase]);
 
   useEffect(() => {
     if (!supabase) {
@@ -43,18 +63,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Get the current session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Get the current session on mount, then fetch approval
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      await fetchApproval(session?.user?.id ?? null);
       setLoading(false);
     });
 
-    // Listen for auth state changes
+    // Listen for auth state changes (login / logout / token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
+        await fetchApproval(session?.user?.id ?? null);
         setLoading(false);
       }
     );
@@ -85,6 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     if (!supabase) return;
     await supabase.auth.signOut();
+    setApproved(false);
   }, [supabase]);
 
   const value = useMemo<AuthContextValue>(() => ({
@@ -92,10 +115,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     loading,
     notConfigured: !configured,
+    approved,
     signIn,
     signUp,
     signOut,
-  }), [user, session, loading, configured, signIn, signUp, signOut]);
+  }), [user, session, loading, configured, approved, signIn, signUp, signOut]);
 
   return (
     <AuthContext.Provider value={value}>
