@@ -72,23 +72,18 @@ export default function LoginPage() {
     setError(''); setSuccess('');
   };
 
-  // Language toggle button — reused in multiple places
-  const LangToggle = () => (
-    <div className="absolute top-4 right-4 z-10">
-      <button
-        onClick={() => setLang(lang === 'en' ? 'es' : 'en')}
-        className="flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-sm border border-pink-100 rounded-full text-xs font-semibold text-pink-600 hover:bg-white hover:shadow-sm transition-all"
-      >
-        {lang === 'en' ? '🇲🇽 Español' : '🇺🇸 English'}
-      </button>
-    </div>
-  );
-
   // ── Pending approval (signed in but not yet approved) ───────────────────────
   if (user && !approved) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-50 via-pink-50 to-fuchsia-50 px-4 relative">
-        <LangToggle />
+        <div className="absolute top-4 right-4 z-10">
+          <button
+            onClick={() => setLang(lang === 'en' ? 'es' : 'en')}
+            className="flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-sm border border-pink-100 rounded-full text-xs font-semibold text-pink-600 hover:bg-white hover:shadow-sm transition-all"
+          >
+            {lang === 'en' ? '🇲🇽 Español' : '🇺🇸 English'}
+          </button>
+        </div>
         <div className="w-full max-w-sm text-center bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl shadow-pink-200/40 border border-pink-100/50 p-10 space-y-5">
           <div className="flex justify-center">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-100 to-fuchsia-100 flex items-center justify-center text-3xl shadow-inner">
@@ -117,7 +112,14 @@ export default function LoginPage() {
   // ── Login / Sign-up form ────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-fuchsia-50 flex flex-col">
-      <LangToggle />
+      <div className="absolute top-4 right-4 z-10">
+        <button
+          onClick={() => setLang(lang === 'en' ? 'es' : 'en')}
+          className="flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-sm border border-pink-100 rounded-full text-xs font-semibold text-pink-600 hover:bg-white hover:shadow-sm transition-all"
+        >
+          {lang === 'en' ? '🇲🇽 Español' : '🇺🇸 English'}
+        </button>
+      </div>
 
       {/* Background blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">

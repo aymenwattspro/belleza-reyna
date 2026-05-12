@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import type { User, Session, AuthError } from '@supabase/supabase-js';
+import type { User, Session, AuthError, SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -31,6 +31,17 @@ export function useAuth() {
   return ctx;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Force-clear the local Supabase session without contacting the server. */
+async function forceLocalSignOut(supabase: SupabaseClient) {
+  try {
+    await supabase.auth.signOut({ scope: 'local' });
+  } catch {
+    // Ignore - local clear always works even if the network request fails
+  }
+}
+
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -42,128 +53,92 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const configured = isSupabaseConfigured();
   const supabase = configured ? getSupabaseClient() : null;
 
-  // ── Poll approval status while user is pending (every 8 seconds) ─────────────
-  useEffect(() => {
-    if (!user || approved) return; // Only poll when user exists but is NOT approved
-    console.log('Starting approval polling for user:', user.id);
-    const interval = setInterval(() => {
-      console.log('Polling approval status...');
-      fetchApproval(user.id);
-    }, 8000);
-    return () => {
-      console.log('Stopping approval polling');
-      clearInterval(interval);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, approved]);
-
-  // ── Fetch approval status from profiles table ────────────────────────────────
-  const fetchApproval = useCallback(async (userId: string | null) => {
-    if (!supabase || !userId) {
-      setApproved(false);
-      return;
-    }
+  // ── Fetch approval status ────────────────────────────────────────────────────
+  // Returns false by default on any error (fail-safe / deny by default).
+  // If the profile row doesn't exist (PGRST116 = no rows) for an authenticated
+  // user, we force a local sign-out — this clears stale sessions for deleted users.
+  const fetchApproval = useCallback(async (userId: string | null): Promise<boolean> => {
+    if (!supabase || !userId) return false;
     try {
-      console.log('Fetching approval for userId:', userId);
-      
-      // First try to get profile directly (more reliable than RPC)
-      const { data: profileData, error: profileError } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
-        .select('is_approved')
+        .select('approved')          // ← column name matches migration SQL
         .eq('id', userId)
         .single();
-      
-      console.log('Profile query result:', { profileData, profileError });
-      
-      // If profile doesn't exist or there's an error, create it and set approved to false
-      if (profileError || !profileData) {
-        console.log('Profile not found or error, creating new profile');
-        
-        // Try to create the profile
-        const { error: insertError } = await supabase
-          .from('profiles')
-          .upsert({ 
-            id: userId, 
-            is_approved: false,
-            updated_at: new Date().toISOString()
-          } as any);
-        
-        if (insertError) {
-          console.log('Failed to create profile:', insertError);
+
+      if (error) {
+        // PGRST116 = no rows returned — user profile was deleted (or never created)
+        // Force a local sign-out so the stale browser session is cleared immediately
+        if (error.code === 'PGRST116') {
+          await forceLocalSignOut(supabase);
+          setUser(null);
+          setSession(null);
         }
-        
-        setApproved(false);
-        return;
+        return false;
       }
-      
-      const isApproved = (profileData as any).is_approved === true;
-      console.log('User approval status:', isApproved);
-      setApproved(isApproved);
-    } catch (err) {
-      // Network failure or any unexpected error → default to NOT approved
-      console.log('Approval check failed:', err);
-      setApproved(false);
+
+      return (data as { approved?: boolean })?.approved === true;
+    } catch {
+      return false;
     }
   }, [supabase]);
 
+  // ── Poll approval every 8s while user is present but NOT yet approved ────────
+  useEffect(() => {
+    if (!user || approved) return;
+    const interval = setInterval(async () => {
+      const result = await fetchApproval(user.id);
+      setApproved(result);
+    }, 8000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, approved]);
+
+  // ── Bootstrap ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!supabase) {
-      // Supabase not configured — skip auth resolution, mark as done
       setLoading(false);
       return;
     }
 
-    // Add timeout to prevent infinite loading
-    const timeout = setTimeout(() => {
-      if (loading) {
-        console.log('Auth initialization timeout - forcing completion');
-        setLoading(false);
-      }
-    }, 5000); // 5 second timeout
-
-    // Get the current session on mount, then fetch approval
+    // Initial session check
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      await fetchApproval(session?.user?.id ?? null);
-      clearTimeout(timeout);
+      const ok = await fetchApproval(session?.user?.id ?? null);
+      setApproved(ok);
       setLoading(false);
-    }).catch((err) => {
-      console.log('Session fetch failed:', err);
-      clearTimeout(timeout);
+    }).catch(() => {
       setLoading(false);
     });
 
-    // Listen for auth state changes (login / logout / token refresh)
+    // Live auth state changes (sign-in, sign-out, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        // Only re-enter loading when a real user session is present —
-        // avoids blocking the login page on initial load (no-session) or logout.
+        // Only block on loading while we check approval for a real session
         if (session?.user) setLoading(true);
         setSession(session);
         setUser(session?.user ?? null);
-        await fetchApproval(session?.user?.id ?? null);
+        const ok = await fetchApproval(session?.user?.id ?? null);
+        setApproved(ok);
         setLoading(false);
       }
     );
 
-    return () => {
-      clearTimeout(timeout);
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally run only once
+  }, []);
 
-  // ── Sign In ─────────────────────────────────────────────────────────────────
+  // ── Auth actions ─────────────────────────────────────────────────────────────
+
   const signIn = useCallback(async (email: string, password: string): Promise<AuthError | null> => {
-    if (!supabase) return { name: 'AuthError', message: 'Supabase is not configured. Follow SUPABASE_SETUP.md.' } as AuthError;
+    if (!supabase) return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return error;
   }, [supabase]);
 
-  // ── Sign Up ─────────────────────────────────────────────────────────────────
   const signUp = useCallback(async (email: string, password: string, fullName?: string): Promise<AuthError | null> => {
-    if (!supabase) return { name: 'AuthError', message: 'Supabase is not configured. Follow SUPABASE_SETUP.md.' } as AuthError;
+    if (!supabase) return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -172,12 +147,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return error;
   }, [supabase]);
 
-  // ── Sign Out ────────────────────────────────────────────────────────────────
   const signOut = useCallback(async () => {
     if (!supabase) return;
-    await supabase.auth.signOut();
+    // Use local scope — always clears the browser session even if the server
+    // rejects the request (e.g. user was deleted from Supabase auth.users).
+    await forceLocalSignOut(supabase);
+    setUser(null);
+    setSession(null);
     setApproved(false);
   }, [supabase]);
+
+  // ── Context value ─────────────────────────────────────────────────────────────
 
   const value = useMemo<AuthContextValue>(() => ({
     user,
