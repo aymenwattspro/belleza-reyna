@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+/* ── Belleza Reyna Brand: Hot Pink / Fuchsia + White ── */
+:root {
+  --background: #ffffff;
+  --foreground: #1A1A1A;
+
+  /* ── Primary brand: hot pink / fuchsia ── */
+  --brand:           #E91E8C;   /* hot pink — main CTA, buttons, active states  */
+  --brand-dark:      #C20070;   /* deep fuchsia — hover, pressed                */
+  --brand-fuchsia:   #D946EF;   /* fuchsia accent                               */
+  --brand-light:     #FCE7F3;   /* pink-100 — subtle backgrounds                */
+  --brand-50:        #FDF2F8;   /* pink-50 — page backgrounds                   */
+  --brand-border:    #FBCFE8;   /* pink-200 — card borders                      */
+
+  /* ── Legacy aliases (kept for backward compat) ── */
+  --reyna-pink-light:  #FCE7F3;
+  --reyna-pink-accent: #E91E8C;
+  --reyna-nude:        #FDF2F8;
+  --reyna-black:       #1A1A1A;
+  --reyna-gold:        #F472B6;   /* replaced gold with light pink               */
+
+  /* ── Shadows & glass ── */
+  --card-shadow:  0 10px 30px -10px rgba(233, 30, 140, 0.12);
+  --glass-bg:     rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(233, 30, 140, 0.10);
+}
+
+@theme inline {
+  --color-background:   var(--background);
+  --color-foreground:   var(--foreground);
+  --font-sans:          var(--font-outfit);
+
+  --color-reyna-brand:   var(--brand);
+  --color-reyna-pink:    var(--brand-light);
+  --color-reyna-accent:  var(--reyna-pink-accent);
+  --color-reyna-nude:    var(--reyna-nude);
+  --color-reyna-black:   var(--reyna-black);
+  --color-reyna-gold:    var(--reyna-gold);
+
+  --shadow-reyna: var(--card-shadow);
+
+  /* ── Tailwind theme overrides: all brand-accent uses use hot pink ── */
+  --color-brand-50:   #FDF2F8;
+  --color-brand-100:  #FCE7F3;
+  --color-brand-200:  #FBCFE8;
+  --color-brand-300:  #F9A8D4;
+  --color-brand-400:  #F472B6;
+  --color-brand-500:  #E91E8C;  /* brand primary */
+  --color-brand-600:  #C20070;
+  --color-brand-700:  #9D005A;
+  --color-brand-800:  #831843;
+  --color-brand-900:  #500724;
+
+  @keyframes sparkle {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.5; transform: scale(1.2); }
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+}
+
+/* ── Base ── */
+body {
+  background-color: var(--brand-50, #FDF2F8);
+  color: var(--reyna-black);
+  min-height: 100vh;
+}
+
+/* ── Utility classes ── */
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--card-shadow);
+}
+
+.brand-gradient {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-fuchsia) 100%);
+}
+
+.brand-gradient-light {
+  background: linear-gradient(135deg, var(--brand-50) 0%, var(--brand-light) 100%);
+}
+
+/* accent-gradient kept for backward compat */
+.accent-gradient {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-light) 100%);
+}
+
+/* pink-gradient kept for backward compat */
+.pink-gradient {
+  background: linear-gradient(135deg, var(--brand-light) 0%, var(--brand-50) 100%);
+}
+
+/* ── Custom scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--brand-50); }
+::-webkit-scrollbar-thumb {
+  background: var(--brand-border);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--brand); }
+
+/* ── Focus ring — brand color ── */
+*:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* ── Selection color ── */
+::selection {
+  background-color: var(--brand-light);
+  color: var(--brand-dark);
+}
