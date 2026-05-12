@@ -42,6 +42,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const configured = isSupabaseConfigured();
   const supabase = configured ? getSupabaseClient() : null;
 
+  // ── Poll approval status while user is pending (every 8 seconds) ─────────────
+  useEffect(() => {
+    if (!user || approved) return; // Only poll when user exists but is NOT approved
+    const interval = setInterval(() => {
+      fetchApproval(user.id);
+    }, 8000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, approved]);
+
   // ── Fetch approval status from profiles table ────────────────────────────────
   const fetchApproval = useCallback(async (userId: string | null) => {
     if (!supabase || !userId) {
