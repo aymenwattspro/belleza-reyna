@@ -1,26 +1,10 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
-
-// Root page — smart redirect:
-// • Authenticated  → /inventory-hub
-// • Not auth'd     → /login
+// Root page — instant server-side redirect to /login.
+// AppLayout and the login page's useEffect handle onward routing:
+//   • Logged-in + approved  → login page redirects to /inventory-hub
+//   • Logged-in, pending    → login page shows pending approval screen
+//   • Not logged in         → login page is shown
 export default function RootPage() {
-  const router = useRouter();
-  const { user, loading } = useAuth();
-
-  useEffect(() => {
-    if (loading) return; // wait for Supabase to resolve session
-
-    if (user) {
-      router.replace('/inventory-hub');
-    } else {
-      router.replace('/login');
-    }
-  }, [loading, user, router]);
-
-  // Blank while redirecting — no flash of content
-  return null;
+  redirect('/login');
 }

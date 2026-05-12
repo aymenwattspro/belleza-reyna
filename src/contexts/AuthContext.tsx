@@ -94,9 +94,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth state changes (login / logout / token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        // Re-enter loading state so the login page useEffect (which checks
-        // !authLoading before redirecting) waits for the full approval check.
-        setLoading(true);
+        // Only re-enter loading when a real user session is present —
+        // avoids blocking the login page on initial load (no-session) or logout.
+        if (session?.user) setLoading(true);
         setSession(session);
         setUser(session?.user ?? null);
         await fetchApproval(session?.user?.id ?? null);

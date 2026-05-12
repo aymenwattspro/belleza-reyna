@@ -84,16 +84,6 @@ export default function LoginPage() {
     </div>
   );
 
-  // ── Loading spinner ─────────────────────────────────────────────────────────
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 to-fuchsia-50 relative">
-        <LangToggle />
-        <div className="w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
   // ── Pending approval (signed in but not yet approved) ───────────────────────
   if (user && !approved) {
     return (
@@ -150,6 +140,8 @@ export default function LoginPage() {
                   alt="Belleza Reyna"
                   width={80}
                   height={80}
+                  priority
+                  loading="eager"
                   className="object-contain drop-shadow-2xl"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 />
