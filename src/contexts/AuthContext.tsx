@@ -45,10 +45,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ── Poll approval status while user is pending (every 8 seconds) ─────────────
   useEffect(() => {
     if (!user || approved) return; // Only poll when user exists but is NOT approved
+    console.log('Starting approval polling for user:', user.id);
     const interval = setInterval(() => {
+      console.log('Polling approval status...');
       fetchApproval(user.id);
     }, 8000);
-    return () => clearInterval(interval);
+    return () => {
+      console.log('Stopping approval polling');
+      clearInterval(interval);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, approved]);
 
@@ -59,18 +64,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
+      console.log('Fetching approval for userId:', userId);
       const { data, error } = await supabase
         .from('profiles')
         .select('approved')
         .eq('id', userId)
         .single();
+      
+      console.log('Approval query result:', { data, error });
+      
       // Any error (table not found, network, RLS) → default to NOT approved
       if (error || !data) {
         console.log('Approval check error:', error?.message || 'No data found');
         setApproved(false);
         return;
       }
-      setApproved((data as { approved?: boolean })?.approved === true);
+      
+      const isApproved = (data as { approved?: boolean })?.approved === true;
+      console.log('User approval status:', isApproved);
+      setApproved(isApproved);
     } catch (err) {
       // Network failure or any unexpected error → default to NOT approved
       console.log('Approval check failed:', err);
