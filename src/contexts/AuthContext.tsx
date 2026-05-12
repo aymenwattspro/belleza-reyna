@@ -65,22 +65,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       console.log('Fetching approval for userId:', userId);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('approved')
-        .eq('id', userId)
-        .single();
+      // Use RPC to call a function that can read from auth.users
+      const { data, error } = await supabase.rpc('get_user_approval', { 
+        user_id: userId 
+      } as any);
       
       console.log('Approval query result:', { data, error });
       
-      // Any error (table not found, network, RLS) → default to NOT approved
-      if (error || !data) {
+      // Any error → default to NOT approved
+      if (error || data === null) {
         console.log('Approval check error:', error?.message || 'No data found');
         setApproved(false);
         return;
       }
       
-      const isApproved = (data as { approved?: boolean })?.approved === true;
+      const isApproved = data === true;
       console.log('User approval status:', isApproved);
       setApproved(isApproved);
     } catch (err) {

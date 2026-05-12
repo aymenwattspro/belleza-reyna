@@ -83,6 +83,13 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      get_user_approval: {
+        Args: {
+          user_id: string;
+        };
+        Returns: boolean;
+      };
+    };
   };
 };
