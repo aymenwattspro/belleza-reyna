@@ -1,10 +1,5 @@
-import { redirect } from 'next/navigation';
-
-// Root page — instant server-side redirect to /login.
-// AppLayout and the login page's useEffect handle onward routing:
-//   • Logged-in + approved  → login page redirects to /inventory-hub
-//   • Logged-in, pending    → login page shows pending approval screen
-//   • Not logged in         → login page is shown
+// Root route is handled by the edge-level redirect in next.config.ts → /login
+// This component is never reached in practice.
 export default function RootPage() {
-  redirect('/login');
+  return null;
 }

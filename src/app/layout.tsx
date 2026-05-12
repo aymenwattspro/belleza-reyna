@@ -12,6 +12,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 const outfit = Outfit({
   subsets: ['latin'],
   variable: '--font-outfit',
+  display: 'swap', // Never block page paint waiting for the font
 });
 
 export const metadata: Metadata = {
