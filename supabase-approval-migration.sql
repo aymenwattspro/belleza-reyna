@@ -99,7 +99,16 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
   INSERT INTO public.profiles (id, email, full_name, is_approved)
-  VALUES (new.id, new.email, new.raw_user_meta_data->>'full_name', false);
+  VALUES (
+    new.id,
+    new.email,
+    COALESCE(new.raw_user_meta_data->>'full_name', ''),
+    false
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN new;
+EXCEPTION WHEN OTHERS THEN
+  -- Never block signup due to a profile-creation error
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

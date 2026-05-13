@@ -86,14 +86,14 @@ After a user signs up, they will see a **"Access Pending Approval"** screen. To 
 1. Go to your **Supabase Dashboard** → **Table Editor** → `profiles` table.
 2. Find the row for the user you want to approve (check the `email` column).
 3. Click the row to edit it.
-4. Set the `approved` column to **`true`**.
+4. Set the `is_approved` column to **`true`**.
 5. Click **Save**.
 
 The user will be able to access the app on their next page load (or immediately if they are already on the pending screen).
 
 > 💡 **Tip**: You can also run this SQL to approve a specific user quickly:
 > ```sql
-> UPDATE public.profiles SET approved = true WHERE email = 'user@example.com';
+> UPDATE public.profiles SET is_approved = true WHERE email = 'user@example.com';
 > ```
 
 ---
@@ -139,6 +139,7 @@ If you want to restrict who can sign up (invite-only), go to **Authentication** 
 
 | Problem | Solution |
 |---|---|
+| **"Database error saving new user"** | Re-run `supabase-approval-migration.sql` in the SQL Editor. The trigger that creates a `profiles` row on signup was either not installed or failed. The updated SQL now includes `ON CONFLICT DO NOTHING` and exception handling so it never blocks signups. |
 | "Invalid API key" error | Double-check your `.env.local` values match the Supabase dashboard |
 | "relation does not exist" error | Make sure you ran the schema SQL in Step 4 |
 | Users not redirected after signup | Disable email confirmation (Step 5 Option B) |
