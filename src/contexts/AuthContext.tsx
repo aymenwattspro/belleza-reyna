@@ -23,7 +23,7 @@ interface AuthContextValue {
   notConfigured: boolean;
   /**
    * True when the cached profile row has is_approved = true.
-   * Updated only on auth events (initial load, sign-in, sign-out).
+   * Updated on auth events and immediately after sign-in / sign-up.
    */
   approved: boolean;
   signIn: (email: string, password: string) => Promise<AuthError | null>;
@@ -86,86 +86,99 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
   const supabase = supabaseRef.current;
 
+  // ── Centralized hydration ────────────────────────────────────────────────────
+  // The single source of truth for hydrating auth state.
+  // Always wrapped in try/finally → setLoading(false) is guaranteed.
+  // Called by: bootstrap, onAuthStateChange, signIn, signUp.
+  const isMountedRef = useRef(true);
+  // Suppresses the duplicate profile fetch from onAuthStateChange when signIn
+  // or signUp has just hydrated manually (avoids 2 profile calls per login).
+  const skipNextEventRef = useRef(false);
+
+  const hydrate = useCallback(async () => {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+    try {
+      setLoading(true);
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+
+      if (!isMountedRef.current) return;
+
+      if (!authUser) {
+        setUser(null);
+        setSession(null);
+        setApproved(false);
+        return;
+      }
+
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const isApproved = await fetchIsApproved(supabase, authUser.id);
+
+      if (!isMountedRef.current) return;
+
+      setSession(authSession);
+      setUser(authUser);
+      setApproved(isApproved);
+    } catch (e) {
+      console.error('[AuthContext] hydrate failed:', e);
+    } finally {
+      if (isMountedRef.current) setLoading(false);
+    }
+  }, [supabase]);
+
   // ── Bootstrap effect ─────────────────────────────────────────────────────────
   // Runs ONCE on mount. Sets up exactly one auth listener.
-  // EVERY code path is wrapped in try/finally so setLoading(false) ALWAYS fires.
   useEffect(() => {
+    isMountedRef.current = true;
+
     if (!supabase) {
       setLoading(false);
       return;
     }
 
-    let isMounted = true;
+    // Initial hydration
+    hydrate();
 
-    // ── 1) Initial check ──────────────────────────────────────────────────────
-    const runInitialCheck = async () => {
-      try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-
-        if (!isMounted) return;
-
-        if (!authUser) {
-          setUser(null);
-          setSession(null);
-          setApproved(false);
-          return; // finally still runs → loading=false
-        }
-
-        const { data: { session: authSession } } = await supabase.auth.getSession();
-        const isApproved = await fetchIsApproved(supabase, authUser.id);
-
-        if (!isMounted) return;
-
-        setSession(authSession);
-        setUser(authUser);
-        setApproved(isApproved);
-      } catch (e) {
-        console.error('[AuthContext] initial check error:', e);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    runInitialCheck();
-
-    // ── 2) Single auth listener — only reacts to SIGNED_IN / SIGNED_OUT ──────
+    // Single auth listener — only acts on SIGNED_IN / SIGNED_OUT
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, nextSession) => {
-        if (!isMounted) return;
-
-        // Ignore everything except SIGNED_IN and SIGNED_OUT to avoid redundant
-        // DB queries on TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED, etc.
+        if (!isMountedRef.current) return;
         if (event !== 'SIGNED_IN' && event !== 'SIGNED_OUT') return;
+
+        // Deduplicate: if signIn/signUp already hydrated, skip this fetch
+        if (event === 'SIGNED_IN' && skipNextEventRef.current) {
+          skipNextEventRef.current = false;
+          return;
+        }
 
         try {
           if (event === 'SIGNED_OUT') {
             setUser(null);
             setSession(null);
             setApproved(false);
-            return; // finally still runs → loading=false
+            return;
           }
 
           // SIGNED_IN
           if (!nextSession?.user) return;
-
           setLoading(true);
           const isApproved = await fetchIsApproved(supabase, nextSession.user.id);
-
-          if (!isMounted) return;
-
+          if (!isMountedRef.current) return;
           setSession(nextSession);
           setUser(nextSession.user);
           setApproved(isApproved);
         } catch (e) {
           console.error('[AuthContext] auth state change error:', e);
         } finally {
-          if (isMounted) setLoading(false);
+          if (isMountedRef.current) setLoading(false);
         }
       },
     );
 
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
       subscription.unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -180,10 +193,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) {
       return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
     }
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    // No manual state mutation — onAuthStateChange will fire SIGNED_IN.
-    return error;
-  }, [supabase]);
+
+    try {
+      setLoading(true);
+      // Tell the listener to skip the duplicate fetch — we'll hydrate here.
+      skipNextEventRef.current = true;
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        skipNextEventRef.current = false; // Reset on failure (no SIGNED_IN fires)
+        return error;
+      }
+
+      // Direct hydration — don't rely solely on onAuthStateChange.
+      // hydrate() always validates via getUser() and fetches the profile.
+      await hydrate();
+      return null;
+    } catch (e) {
+      skipNextEventRef.current = false;
+      console.error('[AuthContext] signIn error:', e);
+      return { name: 'AuthError', message: 'Sign-in failed.' } as AuthError;
+    } finally {
+      if (isMountedRef.current) setLoading(false);
+    }
+  }, [supabase, hydrate]);
 
   const signUp = useCallback(async (
     email: string,
@@ -194,40 +226,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
     }
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName ?? '' } },
-    });
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName ?? '' } },
+      });
 
-    // Best-effort INSERT (not upsert) for the case where the DB trigger may
-    // have failed and an immediate session was returned. Never overwrites.
-    if (!error && data.user && data.session) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase as any).from('profiles').insert({
-          id: data.user.id,
-          email: data.user.email ?? email,
-          is_approved: false,
-          role: 'user',
-        });
-      } catch {
-        /* Profile likely already exists from trigger — ignore conflict */
+      if (error) return error;
+
+      // Best-effort INSERT (not upsert) — never overwrites existing rows.
+      // Only when an immediate session is returned (email confirmation off).
+      if (data.user && data.session) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (supabase as any).from('profiles').insert({
+            id: data.user.id,
+            email: data.user.email ?? email,
+            is_approved: false,
+            role: 'user',
+          });
+        } catch {
+          /* Profile likely already exists from trigger — ignore conflict */
+        }
+
+        // Tell the listener to skip its duplicate fetch — we hydrate here.
+        skipNextEventRef.current = true;
+        // Hydrate immediately so the UI can redirect without waiting on the
+        // onAuthStateChange listener.
+        await hydrate();
       }
-    }
 
-    return error;
-  }, [supabase]);
+      return null;
+    } catch (e) {
+      console.error('[AuthContext] signUp error:', e);
+      return { name: 'AuthError', message: 'Sign-up failed.' } as AuthError;
+    } finally {
+      if (isMountedRef.current) setLoading(false);
+    }
+  }, [supabase, hydrate]);
 
   const signOut = useCallback(async () => {
     if (!supabase) return;
     try {
       await forceLocalSignOut(supabase);
     } finally {
-      setUser(null);
-      setSession(null);
-      setApproved(false);
-      setLoading(false);
+      if (isMountedRef.current) {
+        setUser(null);
+        setSession(null);
+        setApproved(false);
+        setLoading(false);
+      }
     }
   }, [supabase]);
 
