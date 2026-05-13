@@ -24,7 +24,6 @@ interface AuthContextValue {
   /**
    * True when the cached profile row has is_approved = true.
    * Updated only on auth events (initial load, sign-in, sign-out).
-   * Approval changes by admin are reflected on next sign-in.
    */
   approved: boolean;
   signIn: (email: string, password: string) => Promise<AuthError | null>;
@@ -50,7 +49,7 @@ async function forceLocalSignOut(supabase: SupabaseClient) {
   }
 }
 
-/** Single profile fetch — by user.id only, never by email. */
+/** Single profile fetch — by user.id only, never by email. Never throws. */
 async function fetchIsApproved(
   supabase: SupabaseClient,
   userId: string,
@@ -64,7 +63,8 @@ async function fetchIsApproved(
 
     if (error) return false; // No profile row = pending (don't sign out)
     return (data as { is_approved?: boolean } | null)?.is_approved === true;
-  } catch {
+  } catch (e) {
+    console.error('[AuthContext] fetchIsApproved failed:', e);
     return false;
   }
 }
@@ -79,15 +79,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const configured = isSupabaseConfigured();
 
-  // ── Stable Supabase client (never re-created across renders) ────────────────
+  // Stable Supabase client — never re-created across renders
   const supabaseRef = useRef<SupabaseClient | null>(null);
   if (configured && !supabaseRef.current) {
     supabaseRef.current = getSupabaseClient();
   }
   const supabase = supabaseRef.current;
 
-  // ── Single bootstrap effect ─────────────────────────────────────────────────
+  // ── Bootstrap effect ─────────────────────────────────────────────────────────
   // Runs ONCE on mount. Sets up exactly one auth listener.
+  // EVERY code path is wrapped in try/finally so setLoading(false) ALWAYS fires.
   useEffect(() => {
     if (!supabase) {
       setLoading(false);
@@ -96,56 +97,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     let isMounted = true;
 
-    // 1) Initial check — getUser() validates against the auth server (never stale).
-    //    Then ONE profile fetch using user.id.
-    (async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!isMounted) return;
+    // ── 1) Initial check ──────────────────────────────────────────────────────
+    const runInitialCheck = async () => {
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
 
-      if (!authUser) {
-        setLoading(false);
-        return;
+        if (!isMounted) return;
+
+        if (!authUser) {
+          setUser(null);
+          setSession(null);
+          setApproved(false);
+          return; // finally still runs → loading=false
+        }
+
+        const { data: { session: authSession } } = await supabase.auth.getSession();
+        const isApproved = await fetchIsApproved(supabase, authUser.id);
+
+        if (!isMounted) return;
+
+        setSession(authSession);
+        setUser(authUser);
+        setApproved(isApproved);
+      } catch (e) {
+        console.error('[AuthContext] initial check error:', e);
+      } finally {
+        if (isMounted) setLoading(false);
       }
+    };
 
-      const { data: { session: authSession } } = await supabase.auth.getSession();
-      const isApproved = await fetchIsApproved(supabase, authUser.id);
-      if (!isMounted) return;
+    runInitialCheck();
 
-      setSession(authSession);
-      setUser(authUser);
-      setApproved(isApproved);
-      setLoading(false);
-    })().catch(() => {
-      if (isMounted) setLoading(false);
-    });
-
-    // 2) Single auth listener — only reacts to SIGNED_IN / SIGNED_OUT.
-    //    No polling, no intervals, no extra queries.
+    // ── 2) Single auth listener — only reacts to SIGNED_IN / SIGNED_OUT ──────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, nextSession) => {
         if (!isMounted) return;
 
-        if (event === 'SIGNED_OUT') {
-          setUser(null);
-          setSession(null);
-          setApproved(false);
-          setLoading(false);
-          return;
-        }
+        // Ignore everything except SIGNED_IN and SIGNED_OUT to avoid redundant
+        // DB queries on TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED, etc.
+        if (event !== 'SIGNED_IN' && event !== 'SIGNED_OUT') return;
 
-        if (event === 'SIGNED_IN' && nextSession?.user) {
+        try {
+          if (event === 'SIGNED_OUT') {
+            setUser(null);
+            setSession(null);
+            setApproved(false);
+            return; // finally still runs → loading=false
+          }
+
+          // SIGNED_IN
+          if (!nextSession?.user) return;
+
           setLoading(true);
           const isApproved = await fetchIsApproved(supabase, nextSession.user.id);
+
           if (!isMounted) return;
+
           setSession(nextSession);
           setUser(nextSession.user);
           setApproved(isApproved);
-          setLoading(false);
+        } catch (e) {
+          console.error('[AuthContext] auth state change error:', e);
+        } finally {
+          if (isMounted) setLoading(false);
         }
-        // TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED, PASSWORD_RECOVERY:
-        // do NOTHING. We don't re-query the profile on token refresh — that
-        // would cause repeated DB calls. Approval changes are picked up on
-        // next sign-in.
       },
     );
 
@@ -153,7 +168,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isMounted = false;
       subscription.unsubscribe();
     };
-    // Empty deps — bootstrap runs exactly once for the lifetime of the provider.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -167,7 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    // No manual state update — onAuthStateChange will fire SIGNED_IN and handle it.
+    // No manual state mutation — onAuthStateChange will fire SIGNED_IN.
     return error;
   }, [supabase]);
 
@@ -186,8 +200,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       options: { data: { full_name: fullName ?? '' } },
     });
 
-    // Best-effort profile INSERT (not upsert) only when the DB trigger may have
-    // missed and we have an immediate session. Never overwrites existing rows.
+    // Best-effort INSERT (not upsert) for the case where the DB trigger may
+    // have failed and an immediate session was returned. Never overwrites.
     if (!error && data.user && data.session) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -198,7 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: 'user',
         });
       } catch {
-        /* Profile already exists from trigger — ignore conflict */
+        /* Profile likely already exists from trigger — ignore conflict */
       }
     }
 
@@ -207,14 +221,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (!supabase) return;
-    await forceLocalSignOut(supabase);
-    // Clear state immediately. onAuthStateChange will also fire SIGNED_OUT.
-    setUser(null);
-    setSession(null);
-    setApproved(false);
+    try {
+      await forceLocalSignOut(supabase);
+    } finally {
+      setUser(null);
+      setSession(null);
+      setApproved(false);
+      setLoading(false);
+    }
   }, [supabase]);
 
-  // ── Context value (memoized to prevent unnecessary re-renders) ──────────────
+  // ── Context value (memoized to avoid downstream re-renders) ────────────────
 
   const value = useMemo<AuthContextValue>(() => ({
     user,
