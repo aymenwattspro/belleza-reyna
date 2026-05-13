@@ -74,14 +74,12 @@ export type Database = {
         Row: {
           id: string;
           email: string | null;
-          full_name: string | null;
           is_approved: boolean;
           role: string;
           created_at: string;
-          updated_at: string;
         };
-        Insert: { id?: string } & Omit<Database['public']['Tables']['profiles']['Row'], 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<{ id?: string } & Omit<Database['public']['Tables']['profiles']['Row'], 'created_at' | 'updated_at'>>;
+        Insert: { id?: string } & Omit<Database['public']['Tables']['profiles']['Row'], 'id' | 'created_at'>;
+        Update: Partial<{ id?: string } & Omit<Database['public']['Tables']['profiles']['Row'], 'created_at'>>;
       };
     };
     Views: Record<string, never>;

@@ -105,6 +105,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+
+      // Ensure profile row exists (safety net for first load after email confirmation)
+      if (session?.user) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (supabase as any).from('profiles').upsert({
+            id: session.user.id,
+            email: session.user.email,
+            is_approved: false,
+            role: 'user',
+          }, { onConflict: 'id', ignoreDuplicates: true });
+        } catch {
+          // Best-effort — ignore errors
+        }
+      }
+
       const ok = await fetchApproval(session?.user?.id ?? null);
       setApproved(ok);
       setLoading(false);
@@ -119,6 +135,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) setLoading(true);
         setSession(session);
         setUser(session?.user ?? null);
+
+        // On every sign-in, ensure a profile row exists. This is a safety net
+        // for when the DB trigger didn't fire (e.g. first login after email
+        // confirmation, or a trigger misconfiguration). ON CONFLICT DO NOTHING
+        // so it never overwrites an existing approved profile.
+        if (session?.user && (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED')) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (supabase as any).from('profiles').upsert({
+              id: session.user.id,
+              email: session.user.email,
+              is_approved: false,
+              role: 'user',
+            }, { onConflict: 'id', ignoreDuplicates: true });
+          } catch {
+            // Best-effort — ignore errors
+          }
+        }
+
         const ok = await fetchApproval(session?.user?.id ?? null);
         setApproved(ok);
         setLoading(false);
@@ -153,9 +188,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await (supabase as any).from('profiles').upsert({
           id: data.user.id,
           email: data.user.email ?? email,
-          full_name: fullName ?? '',
           is_approved: false,
-        }, { onConflict: 'id' });
+          role: 'user',
+        }, { onConflict: 'id', ignoreDuplicates: true });
       } catch {
         // Ignore — this is just a best-effort fallback, not a hard requirement
       }
