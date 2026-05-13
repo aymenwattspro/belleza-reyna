@@ -9,13 +9,13 @@ import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
-  /** True while Supabase is resolving the initial session AND profile. */
+  /** True while the initial auth + profile check is in progress. */
   loading: boolean;
   /** True when NEXT_PUBLIC_SUPABASE_URL / ANON_KEY are not set / invalid. */
   notConfigured: boolean;
   /**
-   * True once an admin has set approved = true in the profiles table.
-   * Authenticated users with approved = false see the "pending approval" screen.
+   * True when the profile row in public.profiles has is_approved = true.
+   * Always re-fetched from the DB — never read from stale React state.
    */
   approved: boolean;
   signIn: (email: string, password: string) => Promise<AuthError | null>;
@@ -33,30 +33,28 @@ export function useAuth() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Force-clear the local Supabase session without contacting the server. */
 async function forceLocalSignOut(supabase: SupabaseClient) {
   try {
     await supabase.auth.signOut({ scope: 'local' });
   } catch {
-    // Ignore - local clear always works even if the network request fails
+    // Ignore — local clear works even if the network request fails
   }
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser]       = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [approved, setApproved] = useState(false);
 
   const configured = isSupabaseConfigured();
-  const supabase = configured ? getSupabaseClient() : null;
+  const supabase   = configured ? getSupabaseClient() : null;
 
-  // ── Fetch approval status ────────────────────────────────────────────────────
-  // Returns false by default on any error (fail-safe / deny by default).
-  // If the profile row doesn't exist (PGRST116 = no rows) for an authenticated
-  // user, we force a local sign-out — this clears stale sessions for deleted users.
+  // ── Fetch approval ────────────────────────────────────────────────────────────
+  // Always queries public.profiles fresh from the DB using user.id.
+  // Never relies on email, cached session data, or stale React state.
   const fetchApproval = useCallback(async (userId: string | null): Promise<boolean> => {
     if (!supabase || !userId) return false;
     try {
@@ -67,32 +65,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (error) {
-        // PGRST116 = no rows returned — user profile was deleted (or never created)
-        // Force a local sign-out so the stale browser session is cleared immediately
-        if (error.code === 'PGRST116') {
-          await forceLocalSignOut(supabase);
-          setUser(null);
-          setSession(null);
-        }
+        // No profile row yet → user is pending (not approved). Don't sign out.
         return false;
       }
-
       return (data as { is_approved?: boolean })?.is_approved === true;
     } catch {
       return false;
     }
   }, [supabase]);
 
-  // ── Poll approval every 8s while user is present but NOT yet approved ────────
+  // ── Poll approval every 5s while user is present but NOT yet approved ─────────
   useEffect(() => {
     if (!user || approved) return;
     const interval = setInterval(async () => {
       const result = await fetchApproval(user.id);
       setApproved(result);
-    }, 8000);
+    }, 5000);
     return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, approved]);
+  }, [user?.id, approved, fetchApproval]);
 
   // ── Bootstrap ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -101,107 +91,91 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Initial session check
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-
-      // Ensure profile row exists (safety net for first load after email confirmation)
-      if (session?.user) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase as any).from('profiles').upsert({
-            id: session.user.id,
-            email: session.user.email,
-            is_approved: false,
-            role: 'user',
-          }, { onConflict: 'id', ignoreDuplicates: true });
-        } catch {
-          // Best-effort — ignore errors
-        }
+    // Use getUser() to validate the session against the auth server (never stale).
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (user) {
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+        setUser(user);
+        const ok = await fetchApproval(user.id);
+        setApproved(ok);
       }
-
-      const ok = await fetchApproval(session?.user?.id ?? null);
-      setApproved(ok);
       setLoading(false);
     }).catch(() => {
       setLoading(false);
     });
 
-    // Live auth state changes (sign-in, sign-out, token refresh)
+    // Live auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        // Only block on loading while we check approval for a real session
         if (session?.user) setLoading(true);
         setSession(session);
-        setUser(session?.user ?? null);
 
-        // On every sign-in, ensure a profile row exists. This is a safety net
-        // for when the DB trigger didn't fire (e.g. first login after email
-        // confirmation, or a trigger misconfiguration). ON CONFLICT DO NOTHING
-        // so it never overwrites an existing approved profile.
-        if (session?.user && (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED')) {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (supabase as any).from('profiles').upsert({
-              id: session.user.id,
-              email: session.user.email,
-              is_approved: false,
-              role: 'user',
-            }, { onConflict: 'id', ignoreDuplicates: true });
-          } catch {
-            // Best-effort — ignore errors
-          }
+        if (session?.user) {
+          setUser(session.user);
+          // Always re-fetch profile from DB — never trust cached approval state.
+          const ok = await fetchApproval(session.user.id);
+          setApproved(ok);
+        } else {
+          setUser(null);
+          setApproved(false);
         }
 
-        const ok = await fetchApproval(session?.user?.id ?? null);
-        setApproved(ok);
         setLoading(false);
       }
     );
 
     return () => subscription.unsubscribe();
+  // fetchApproval is stable (useCallback with supabase dep) — safe to include
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Auth actions ─────────────────────────────────────────────────────────────
 
-  const signIn = useCallback(async (email: string, password: string): Promise<AuthError | null> => {
+  const signIn = useCallback(async (
+    email: string,
+    password: string,
+  ): Promise<AuthError | null> => {
     if (!supabase) return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return error;
   }, [supabase]);
 
-  const signUp = useCallback(async (email: string, password: string, fullName?: string): Promise<AuthError | null> => {
+  const signUp = useCallback(async (
+    email: string,
+    password: string,
+    fullName?: string,
+  ): Promise<AuthError | null> => {
     if (!supabase) return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { full_name: fullName ?? '' } },
     });
-    // Client-side fallback: if signup succeeded and we have a session (no email
-    // confirmation required), upsert the profile row in case the DB trigger
-    // didn't fire or had a configuration issue.
+
+    // Client-side fallback: INSERT (not upsert) profile if the DB trigger
+    // didn't create it. Only when we have an immediate session (email
+    // confirmation disabled). Uses INSERT so it NEVER overwrites existing rows.
     if (!error && data.user && data.session) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase as any).from('profiles').upsert({
+        await (supabase as any).from('profiles').insert({
           id: data.user.id,
           email: data.user.email ?? email,
           is_approved: false,
           role: 'user',
-        }, { onConflict: 'id', ignoreDuplicates: true });
+        });
       } catch {
-        // Ignore — this is just a best-effort fallback, not a hard requirement
+        // Profile already exists from the trigger → ignore the conflict error
       }
     }
+
     return error;
   }, [supabase]);
 
   const signOut = useCallback(async () => {
     if (!supabase) return;
-    // Use local scope — always clears the browser session even if the server
-    // rejects the request (e.g. user was deleted from Supabase auth.users).
     await forceLocalSignOut(supabase);
     setUser(null);
     setSession(null);
