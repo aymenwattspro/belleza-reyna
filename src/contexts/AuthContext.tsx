@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('approved')          // ← column name matches migration SQL
+        .select('is_approved')
         .eq('id', userId)
         .single();
 
@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      return (data as { approved?: boolean })?.approved === true;
+      return (data as { is_approved?: boolean })?.is_approved === true;
     } catch {
       return false;
     }
