@@ -139,11 +139,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = useCallback(async (email: string, password: string, fullName?: string): Promise<AuthError | null> => {
     if (!supabase) return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { full_name: fullName ?? '' } },
     });
+    // Client-side fallback: if signup succeeded and we have a session (no email
+    // confirmation required), upsert the profile row in case the DB trigger
+    // didn't fire or had a configuration issue.
+    if (!error && data.user && data.session) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any).from('profiles').upsert({
+          id: data.user.id,
+          email: data.user.email ?? email,
+          full_name: fullName ?? '',
+          is_approved: false,
+        }, { onConflict: 'id' });
+      } catch {
+        // Ignore — this is just a best-effort fallback, not a hard requirement
+      }
+    }
     return error;
   }, [supabase]);
 
