@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { Eye, EyeOff, Lock, Mail, User, ArrowRight, UserPlus, LogIn } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -11,8 +10,9 @@ import { cn } from '@/lib/utils';
 type Tab = 'signin' | 'signup';
 
 export default function LoginPage() {
-  const router = useRouter();
   const { t, lang, setLang } = useLanguage();
+  // Pull ONLY from AuthContext — no direct Supabase calls anywhere in this file.
+  // AuthContext owns the auth state and redirect logic; this page just renders.
   const { signIn, signUp, signOut, user, loading: authLoading, approved, notConfigured } = useAuth();
 
   const [tab, setTab] = useState<Tab>('signin');
@@ -23,31 +23,38 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Only redirect when the user is BOTH authenticated AND approved by admin
-  useEffect(() => {
-    if (!authLoading && user && approved) {
-      router.replace('/inventory-hub');
-    }
-  }, [user, authLoading, approved, router]);
+  // Buttons are disabled whenever EITHER the form is submitting OR the
+  // AuthContext is still resolving. Prevents double-clicks and the
+  // "infinite loading" trap.
+  const isBusy = submitting || authLoading;
+
+  // ── Submit handlers ────────────────────────────────────────────────────────
+  // Always wrapped in try / catch / finally so `submitting` is GUARANTEED to
+  // resolve to false, even if signIn / signUp throws unexpectedly. No redirects
+  // are triggered here — that is AuthContext's responsibility.
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
-    const err = await signIn(email.trim(), password);
-    if (err) {
-      setError(err.message);
+    setSubmitting(true);
+    try {
+      const err = await signIn(email.trim(), password);
+      if (err) setError(err.message);
+    } catch (e) {
+      console.error('[Login] signIn unexpected error:', e);
+      setError('Unexpected error. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
-    // Redirect is handled by the useEffect above (fires after approval check completes)
-    setLoading(false);
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+
     if (password !== confirmPassword) {
       setError(t('signup_pw_mismatch'));
       return;
@@ -56,20 +63,31 @@ export default function LoginPage() {
       setError(t('signup_pw_short'));
       return;
     }
-    setLoading(true);
-    const err = await signUp(email.trim(), password, fullName.trim());
-    if (err) {
-      setError(err.message);
-    } else {
-      setSuccess(t('signup_success'));
-      setTab('signin');
+
+    setSubmitting(true);
+    try {
+      const err = await signUp(email.trim(), password, fullName.trim());
+      if (err) {
+        setError(err.message);
+      } else {
+        setSuccess(t('signup_success'));
+        setTab('signin');
+      }
+    } catch (e) {
+      console.error('[Login] signUp unexpected error:', e);
+      setError('Unexpected error. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
-    setLoading(false);
   };
 
   const clearForm = () => {
-    setEmail(''); setPassword(''); setFullName(''); setConfirmPassword('');
-    setError(''); setSuccess('');
+    setEmail('');
+    setPassword('');
+    setFullName('');
+    setConfirmPassword('');
+    setError('');
+    setSuccess('');
   };
 
   // ── Pending approval (signed in but not yet approved) ───────────────────────
@@ -158,8 +176,10 @@ export default function LoginPage() {
                 <button
                   key={tabKey}
                   onClick={() => { setTab(tabKey); clearForm(); }}
+                  disabled={isBusy}
                   className={cn(
                     'flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-semibold transition-all',
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
                     tab === tabKey
                       ? 'text-pink-600 border-b-2 border-pink-500 bg-pink-50/50'
                       : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
@@ -207,7 +227,8 @@ export default function LoginPage() {
                         placeholder="you@example.com"
                         autoComplete="email"
                         required
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white"
+                        disabled={isBusy}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -225,7 +246,8 @@ export default function LoginPage() {
                         placeholder="••••••••"
                         autoComplete="current-password"
                         required
-                        className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white"
+                        disabled={isBusy}
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                       <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                         {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -241,10 +263,10 @@ export default function LoginPage() {
 
                   <button
                     type="submit"
-                    disabled={loading || !email || !password}
+                    disabled={isBusy || !email || !password}
                     className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-rose-500 via-pink-500 to-fuchsia-500 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-pink-300/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm mt-1"
                   >
-                    {loading ? (
+                    {isBusy ? (
                       <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                     ) : (
                       <>{t('enter')} <ArrowRight size={14} /></>
@@ -267,7 +289,8 @@ export default function LoginPage() {
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         placeholder={t('signup_name_placeholder')}
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white"
+                        disabled={isBusy}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -285,7 +308,8 @@ export default function LoginPage() {
                         placeholder="you@example.com"
                         autoComplete="email"
                         required
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white"
+                        disabled={isBusy}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -303,7 +327,8 @@ export default function LoginPage() {
                         placeholder={t('signup_pw_placeholder')}
                         autoComplete="new-password"
                         required
-                        className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white"
+                        disabled={isBusy}
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                       <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                         {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -324,7 +349,8 @@ export default function LoginPage() {
                         placeholder={t('signup_pw_repeat')}
                         autoComplete="new-password"
                         required
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white"
+                        disabled={isBusy}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-pink-400 focus:ring-2 focus:ring-pink-100 outline-none text-sm transition-all bg-gray-50 focus:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -337,10 +363,10 @@ export default function LoginPage() {
 
                   <button
                     type="submit"
-                    disabled={loading || !email || !password || !confirmPassword}
+                    disabled={isBusy || !email || !password || !confirmPassword}
                     className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-rose-500 via-pink-500 to-fuchsia-500 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-pink-300/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm mt-1"
                   >
-                    {loading ? (
+                    {isBusy ? (
                       <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                     ) : (
                       <>{t('create_account')} <ArrowRight size={14} /></>

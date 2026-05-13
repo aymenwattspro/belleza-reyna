@@ -9,25 +9,32 @@ import React, {
   useMemo,
   useRef,
 } from 'react';
+import { useRouter } from 'next/navigation';
 import type { User, Session, AuthError, SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export interface Profile {
+  id: string;
+  email: string | null;
+  is_approved: boolean;
+  role: string;
+  created_at: string;
+}
+
 interface AuthContextValue {
   user: User | null;
+  profile: Profile | null;
   session: Session | null;
   /** True while the initial auth + profile check is in progress. */
   loading: boolean;
   /** True when NEXT_PUBLIC_SUPABASE_URL / ANON_KEY are not set / invalid. */
   notConfigured: boolean;
-  /**
-   * True when the cached profile row has is_approved = true.
-   * Updated on auth events and immediately after sign-in / sign-up.
-   */
+  /** Derived from profile.is_approved. Convenience for callers. */
   approved: boolean;
-  signIn: (email: string, password: string) => Promise<AuthError | null>;
-  signUp: (email: string, password: string, fullName?: string) => Promise<AuthError | null>;
+  signIn:  (email: string, password: string) => Promise<AuthError | null>;
+  signUp:  (email: string, password: string, fullName?: string) => Promise<AuthError | null>;
   signOut: () => Promise<void>;
 }
 
@@ -39,43 +46,15 @@ export function useAuth() {
   return ctx;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function forceLocalSignOut(supabase: SupabaseClient) {
-  try {
-    await supabase.auth.signOut({ scope: 'local' });
-  } catch {
-    /* local clear works even if network request fails */
-  }
-}
-
-/** Single profile fetch — by user.id only, never by email. Never throws. */
-async function fetchIsApproved(
-  supabase: SupabaseClient,
-  userId: string,
-): Promise<boolean> {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('is_approved')
-      .eq('id', userId)
-      .single();
-
-    if (error) return false; // No profile row = pending (don't sign out)
-    return (data as { is_approved?: boolean } | null)?.is_approved === true;
-  } catch (e) {
-    console.error('[AuthContext] fetchIsApproved failed:', e);
-    return false;
-  }
-}
-
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser]         = useState<User | null>(null);
-  const [session, setSession]   = useState<Session | null>(null);
-  const [loading, setLoading]   = useState(true);
-  const [approved, setApproved] = useState(false);
+  const router = useRouter();
+
+  const [user, setUser]       = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const configured = isSupabaseConfigured();
 
@@ -86,50 +65,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
   const supabase = supabaseRef.current;
 
-  // ── Centralized hydration ────────────────────────────────────────────────────
-  // The single source of truth for hydrating auth state.
-  // Always wrapped in try/finally → setLoading(false) is guaranteed.
-  // Called by: bootstrap, onAuthStateChange, signIn, signUp.
+  // isMountedRef guards every async state write
   const isMountedRef = useRef(true);
-  // Suppresses the duplicate profile fetch from onAuthStateChange when signIn
-  // or signUp has just hydrated manually (avoids 2 profile calls per login).
-  const skipNextEventRef = useRef(false);
 
-  const hydrate = useCallback(async () => {
+  // ── Single source of truth: initAuth ─────────────────────────────────────────
+  // Always wrapped in try / catch / finally. setLoading(false) is GUARANTEED.
+  const initAuth = useCallback(async () => {
     if (!supabase) {
       setLoading(false);
       return;
     }
+
     try {
       setLoading(true);
+
+      // 1) Get user (validates session against the auth server — never stale)
       const { data: { user: authUser } } = await supabase.auth.getUser();
 
       if (!isMountedRef.current) return;
 
+      // 2) No user → clear all state and stop
       if (!authUser) {
         setUser(null);
+        setProfile(null);
         setSession(null);
-        setApproved(false);
-        return;
+        return; // finally still runs → loading = false
       }
 
+      // 3) Fetch session + profile ONCE
       const { data: { session: authSession } } = await supabase.auth.getSession();
-      const isApproved = await fetchIsApproved(supabase, authUser.id);
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
 
       if (!isMountedRef.current) return;
 
-      setSession(authSession);
       setUser(authUser);
-      setApproved(isApproved);
+      setSession(authSession);
+      setProfile(profileError ? null : (profileData as Profile | null));
     } catch (e) {
-      console.error('[AuthContext] hydrate failed:', e);
+      console.error('[AuthContext] initAuth error:', e);
     } finally {
       if (isMountedRef.current) setLoading(false);
     }
   }, [supabase]);
 
   // ── Bootstrap effect ─────────────────────────────────────────────────────────
-  // Runs ONCE on mount. Sets up exactly one auth listener.
+  // Runs ONCE on mount. Sets up exactly one auth listener and cleans up on unmount.
   useEffect(() => {
     isMountedRef.current = true;
 
@@ -138,51 +122,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Initial hydration
-    hydrate();
+    // Initial auth check
+    initAuth();
 
-    // Single auth listener — only acts on SIGNED_IN / SIGNED_OUT
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, nextSession) => {
-        if (!isMountedRef.current) return;
-        if (event !== 'SIGNED_IN' && event !== 'SIGNED_OUT') return;
-
-        // Deduplicate: if signIn/signUp already hydrated, skip this fetch
-        if (event === 'SIGNED_IN' && skipNextEventRef.current) {
-          skipNextEventRef.current = false;
-          return;
-        }
-
-        try {
-          if (event === 'SIGNED_OUT') {
-            setUser(null);
-            setSession(null);
-            setApproved(false);
-            return;
-          }
-
-          // SIGNED_IN
-          if (!nextSession?.user) return;
-          setLoading(true);
-          const isApproved = await fetchIsApproved(supabase, nextSession.user.id);
-          if (!isMountedRef.current) return;
-          setSession(nextSession);
-          setUser(nextSession.user);
-          setApproved(isApproved);
-        } catch (e) {
-          console.error('[AuthContext] auth state change error:', e);
-        } finally {
-          if (isMountedRef.current) setLoading(false);
-        }
-      },
-    );
+    // React ONLY to SIGNED_IN and SIGNED_OUT — call initAuth() each time.
+    // Ignores TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED, PASSWORD_RECOVERY
+    // to avoid redundant DB queries.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (!isMountedRef.current) return;
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        initAuth();
+      }
+    });
 
     return () => {
       isMountedRef.current = false;
       subscription.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [supabase, initAuth]);
 
   // ── Auth actions ─────────────────────────────────────────────────────────────
 
@@ -193,29 +150,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) {
       return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
     }
-
-    try {
-      setLoading(true);
-      // Tell the listener to skip the duplicate fetch — we'll hydrate here.
-      skipNextEventRef.current = true;
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        skipNextEventRef.current = false; // Reset on failure (no SIGNED_IN fires)
-        return error;
-      }
-
-      // Direct hydration — don't rely solely on onAuthStateChange.
-      // hydrate() always validates via getUser() and fetches the profile.
-      await hydrate();
-      return null;
-    } catch (e) {
-      skipNextEventRef.current = false;
-      console.error('[AuthContext] signIn error:', e);
-      return { name: 'AuthError', message: 'Sign-in failed.' } as AuthError;
-    } finally {
-      if (isMountedRef.current) setLoading(false);
-    }
-  }, [supabase, hydrate]);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    // onAuthStateChange will fire SIGNED_IN → initAuth() runs → state updates.
+    return error;
+  }, [supabase]);
 
   const signUp = useCallback(async (
     email: string,
@@ -226,65 +164,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
     }
 
-    try {
-      setLoading(true);
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: fullName ?? '' } },
-      });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName ?? '' } },
+    });
 
-      if (error) return error;
-
-      // Best-effort INSERT (not upsert) — never overwrites existing rows.
-      // Only when an immediate session is returned (email confirmation off).
-      if (data.user && data.session) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase as any).from('profiles').insert({
-            id: data.user.id,
-            email: data.user.email ?? email,
-            is_approved: false,
-            role: 'user',
-          });
-        } catch {
-          /* Profile likely already exists from trigger — ignore conflict */
-        }
-
-        // Tell the listener to skip its duplicate fetch — we hydrate here.
-        skipNextEventRef.current = true;
-        // Hydrate immediately so the UI can redirect without waiting on the
-        // onAuthStateChange listener.
-        await hydrate();
+    // Best-effort INSERT (not upsert) — only when an immediate session is
+    // returned (email confirmation disabled). Never overwrites existing rows.
+    if (!error && data.user && data.session) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase as any).from('profiles').insert({
+          id: data.user.id,
+          email: data.user.email ?? email,
+          is_approved: false,
+          role: 'user',
+        });
+      } catch {
+        /* Profile likely already exists from DB trigger — ignore conflict */
       }
-
-      return null;
-    } catch (e) {
-      console.error('[AuthContext] signUp error:', e);
-      return { name: 'AuthError', message: 'Sign-up failed.' } as AuthError;
-    } finally {
-      if (isMountedRef.current) setLoading(false);
     }
-  }, [supabase, hydrate]);
+
+    return error;
+  }, [supabase]);
 
   const signOut = useCallback(async () => {
-    if (!supabase) return;
+    // Always end up on /login regardless of whether Supabase reachable.
     try {
-      await forceLocalSignOut(supabase);
+      if (supabase) await supabase.auth.signOut();
+    } catch (e) {
+      console.error('[AuthContext] signOut error:', e);
     } finally {
+      // Clear all auth state synchronously so no component sees stale auth.
       if (isMountedRef.current) {
         setUser(null);
+        setProfile(null);
         setSession(null);
-        setApproved(false);
         setLoading(false);
       }
+      // Single immediate redirect — replace() prevents back-navigation
+      // to authenticated pages.
+      router.replace('/login');
     }
-  }, [supabase]);
+  }, [supabase, router]);
 
   // ── Context value (memoized to avoid downstream re-renders) ────────────────
 
+  const approved = profile?.is_approved === true;
+
   const value = useMemo<AuthContextValue>(() => ({
     user,
+    profile,
     session,
     loading,
     notConfigured: !configured,
@@ -292,7 +223,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signIn,
     signUp,
     signOut,
-  }), [user, session, loading, configured, approved, signIn, signUp, signOut]);
+  }), [user, profile, session, loading, configured, approved, signIn, signUp, signOut]);
 
   return (
     <AuthContext.Provider value={value}>

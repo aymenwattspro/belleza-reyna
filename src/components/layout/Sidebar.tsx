@@ -3,7 +3,7 @@
 import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import {
   Home, LayoutDashboard, Users, ShoppingCart,
   History, LogOut, Globe,
@@ -31,17 +31,15 @@ const NAV_ITEMS: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { t, lang, setLang } = useLanguage();
   const { orderLines } = useOrder();
 
   const { signOut } = useAuth();
   const pendingOrderCount = orderLines.filter(l => l.selected).length;
 
-  const handleLogout = async () => {
-    await signOut();
-    router.replace('/login');
-  };
+  // signOut() (from AuthContext) already clears state + redirects to /login.
+  // We do NOT redirect here to avoid duplicate router calls.
+  const handleLogout = () => signOut();
 
   return (
     <aside className="fixed top-0 left-0 h-screen w-64 flex flex-col bg-white border-r border-gray-100 z-40 shadow-sm">
