@@ -1,6 +1,14 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+} from 'react';
 import type { User, Session, AuthError, SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client';
 
@@ -14,8 +22,9 @@ interface AuthContextValue {
   /** True when NEXT_PUBLIC_SUPABASE_URL / ANON_KEY are not set / invalid. */
   notConfigured: boolean;
   /**
-   * True when the profile row in public.profiles has is_approved = true.
-   * Always re-fetched from the DB — never read from stale React state.
+   * True when the cached profile row has is_approved = true.
+   * Updated only on auth events (initial load, sign-in, sign-out).
+   * Approval changes by admin are reflected on next sign-in.
    */
   approved: boolean;
   signIn: (email: string, password: string) => Promise<AuthError | null>;
@@ -37,97 +46,115 @@ async function forceLocalSignOut(supabase: SupabaseClient) {
   try {
     await supabase.auth.signOut({ scope: 'local' });
   } catch {
-    // Ignore — local clear works even if the network request fails
+    /* local clear works even if network request fails */
+  }
+}
+
+/** Single profile fetch — by user.id only, never by email. */
+async function fetchIsApproved(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('is_approved')
+      .eq('id', userId)
+      .single();
+
+    if (error) return false; // No profile row = pending (don't sign out)
+    return (data as { is_approved?: boolean } | null)?.is_approved === true;
+  } catch {
+    return false;
   }
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser]       = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser]         = useState<User | null>(null);
+  const [session, setSession]   = useState<Session | null>(null);
+  const [loading, setLoading]   = useState(true);
   const [approved, setApproved] = useState(false);
 
   const configured = isSupabaseConfigured();
-  const supabase   = configured ? getSupabaseClient() : null;
 
-  // ── Fetch approval ────────────────────────────────────────────────────────────
-  // Always queries public.profiles fresh from the DB using user.id.
-  // Never relies on email, cached session data, or stale React state.
-  const fetchApproval = useCallback(async (userId: string | null): Promise<boolean> => {
-    if (!supabase || !userId) return false;
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('is_approved')
-        .eq('id', userId)
-        .single();
+  // ── Stable Supabase client (never re-created across renders) ────────────────
+  const supabaseRef = useRef<SupabaseClient | null>(null);
+  if (configured && !supabaseRef.current) {
+    supabaseRef.current = getSupabaseClient();
+  }
+  const supabase = supabaseRef.current;
 
-      if (error) {
-        // No profile row yet → user is pending (not approved). Don't sign out.
-        return false;
-      }
-      return (data as { is_approved?: boolean })?.is_approved === true;
-    } catch {
-      return false;
-    }
-  }, [supabase]);
-
-  // ── Poll approval every 5s while user is present but NOT yet approved ─────────
-  useEffect(() => {
-    if (!user || approved) return;
-    const interval = setInterval(async () => {
-      const result = await fetchApproval(user.id);
-      setApproved(result);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [user?.id, approved, fetchApproval]);
-
-  // ── Bootstrap ────────────────────────────────────────────────────────────────
+  // ── Single bootstrap effect ─────────────────────────────────────────────────
+  // Runs ONCE on mount. Sets up exactly one auth listener.
   useEffect(() => {
     if (!supabase) {
       setLoading(false);
       return;
     }
 
-    // Use getUser() to validate the session against the auth server (never stale).
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (user) {
-        const { data: { session } } = await supabase.auth.getSession();
-        setSession(session);
-        setUser(user);
-        const ok = await fetchApproval(user.id);
-        setApproved(ok);
+    let isMounted = true;
+
+    // 1) Initial check — getUser() validates against the auth server (never stale).
+    //    Then ONE profile fetch using user.id.
+    (async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!isMounted) return;
+
+      if (!authUser) {
+        setLoading(false);
+        return;
       }
+
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const isApproved = await fetchIsApproved(supabase, authUser.id);
+      if (!isMounted) return;
+
+      setSession(authSession);
+      setUser(authUser);
+      setApproved(isApproved);
       setLoading(false);
-    }).catch(() => {
-      setLoading(false);
+    })().catch(() => {
+      if (isMounted) setLoading(false);
     });
 
-    // Live auth state changes
+    // 2) Single auth listener — only reacts to SIGNED_IN / SIGNED_OUT.
+    //    No polling, no intervals, no extra queries.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (session?.user) setLoading(true);
-        setSession(session);
+      async (event, nextSession) => {
+        if (!isMounted) return;
 
-        if (session?.user) {
-          setUser(session.user);
-          // Always re-fetch profile from DB — never trust cached approval state.
-          const ok = await fetchApproval(session.user.id);
-          setApproved(ok);
-        } else {
+        if (event === 'SIGNED_OUT') {
           setUser(null);
+          setSession(null);
           setApproved(false);
+          setLoading(false);
+          return;
         }
 
-        setLoading(false);
-      }
+        if (event === 'SIGNED_IN' && nextSession?.user) {
+          setLoading(true);
+          const isApproved = await fetchIsApproved(supabase, nextSession.user.id);
+          if (!isMounted) return;
+          setSession(nextSession);
+          setUser(nextSession.user);
+          setApproved(isApproved);
+          setLoading(false);
+        }
+        // TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED, PASSWORD_RECOVERY:
+        // do NOTHING. We don't re-query the profile on token refresh — that
+        // would cause repeated DB calls. Approval changes are picked up on
+        // next sign-in.
+      },
     );
 
-    return () => subscription.unsubscribe();
-  // fetchApproval is stable (useCallback with supabase dep) — safe to include
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+    // Empty deps — bootstrap runs exactly once for the lifetime of the provider.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Auth actions ─────────────────────────────────────────────────────────────
@@ -136,8 +163,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string,
     password: string,
   ): Promise<AuthError | null> => {
-    if (!supabase) return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
+    if (!supabase) {
+      return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    // No manual state update — onAuthStateChange will fire SIGNED_IN and handle it.
     return error;
   }, [supabase]);
 
@@ -146,7 +176,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string,
     fullName?: string,
   ): Promise<AuthError | null> => {
-    if (!supabase) return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
+    if (!supabase) {
+      return { name: 'AuthError', message: 'Supabase is not configured.' } as AuthError;
+    }
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -154,9 +186,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       options: { data: { full_name: fullName ?? '' } },
     });
 
-    // Client-side fallback: INSERT (not upsert) profile if the DB trigger
-    // didn't create it. Only when we have an immediate session (email
-    // confirmation disabled). Uses INSERT so it NEVER overwrites existing rows.
+    // Best-effort profile INSERT (not upsert) only when the DB trigger may have
+    // missed and we have an immediate session. Never overwrites existing rows.
     if (!error && data.user && data.session) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -167,7 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: 'user',
         });
       } catch {
-        // Profile already exists from the trigger → ignore the conflict error
+        /* Profile already exists from trigger — ignore conflict */
       }
     }
 
@@ -177,12 +208,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     if (!supabase) return;
     await forceLocalSignOut(supabase);
+    // Clear state immediately. onAuthStateChange will also fire SIGNED_OUT.
     setUser(null);
     setSession(null);
     setApproved(false);
   }, [supabase]);
 
-  // ── Context value ─────────────────────────────────────────────────────────────
+  // ── Context value (memoized to prevent unnecessary re-renders) ──────────────
 
   const value = useMemo<AuthContextValue>(() => ({
     user,
