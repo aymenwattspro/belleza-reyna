@@ -23,6 +23,13 @@ CREATE POLICY "Users can read own profile"
   TO authenticated
   USING (auth.uid() = id);
 
+-- Allow service role (trigger function) to insert profiles
+DROP POLICY IF EXISTS "Service role can insert profiles" ON public.profiles;
+CREATE POLICY "Service role can insert profiles"
+  ON public.profiles FOR INSERT
+  TO service_role
+  WITH CHECK (true);
+
 -- ── 3. NETTOYAGE DES ANCIENNES RÈGLES (si elles existent) ───────────────────────────
 DROP POLICY IF EXISTS "Users manage own inventory_snapshots" ON public.inventory_snapshots;
 DROP POLICY IF EXISTS "Users manage own inventory_products" ON public.inventory_products;
