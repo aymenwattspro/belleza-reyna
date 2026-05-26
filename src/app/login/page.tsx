@@ -94,10 +94,10 @@ export default function LoginPage() {
   if (user && !approved) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-50 via-pink-50 to-fuchsia-50 px-4 relative">
-        <div className="absolute top-4 right-4 z-50">
+        <div className="absolute top-4 right-4 z-[100]">
           <button
             onClick={() => setLang(lang === 'en' ? 'es' : 'en')}
-            className="flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-sm border border-pink-100 rounded-full text-xs font-semibold text-pink-600 hover:bg-white hover:shadow-sm transition-all"
+            className="flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-sm border border-pink-100 rounded-full text-xs font-semibold text-pink-600 hover:bg-white hover:shadow-sm cursor-pointer transition-all"
           >
             {lang === 'en' ? '🇲🇽 Español' : '🇺🇸 English'}
           </button>
@@ -129,11 +129,11 @@ export default function LoginPage() {
 
   // ── Login / Sign-up form ────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-fuchsia-50 flex flex-col">
-      <div className="absolute top-4 right-4 z-50">
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-fuchsia-50 flex flex-col relative">
+      <div className="absolute top-4 right-4 z-[100]">
         <button
           onClick={() => setLang(lang === 'en' ? 'es' : 'en')}
-          className="flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-sm border border-pink-100 rounded-full text-xs font-semibold text-pink-600 hover:bg-white hover:shadow-sm transition-all"
+          className="flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-sm border border-pink-100 rounded-full text-xs font-semibold text-pink-600 hover:bg-white hover:shadow-sm cursor-pointer transition-all"
         >
           {lang === 'en' ? '🇲🇽 Español' : '🇺🇸 English'}
         </button>

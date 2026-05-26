@@ -46,8 +46,8 @@ export function detectColumns(headerRow: string[]): Omit<ColMapping, 'headerRowI
   const claveIdx = find('clave', 'sku', 'codigo', 'barcode', 'referencia', 'ref.');
   const descIdx = find('descrip', 'nombre', 'producto', 'articulo', 'art.');
   const existenciaIdx = h.findIndex(cell =>
-    (['existencia', 'stock', 'cantidad', 'qty'].some(p => cell.includes(p)) && !cell.includes('objetivo') && !cell.includes('target')) ||
-    (cell.includes('exist') && !cell.includes('parcial') && !cell.includes('acum'))
+    ((['existencia', 'stock', 'cantidad', 'qty'].some(p => cell.includes(p)) || cell.includes('exist')) &&
+     !cell.includes('objetivo') && !cell.includes('target') && !cell.includes('parcial') && !cell.includes('acum'))
   );
   const precioCIdx = find('precio c', 'costo', 'cost', 'compra', 'p. costo');
   const precioVIdx = find('precio v', 'venta', 'sale', 'p. venta', 'precio s');

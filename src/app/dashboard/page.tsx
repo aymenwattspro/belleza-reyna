@@ -150,9 +150,9 @@ export default function DashboardPage() {
   const topPopular = popularityScores.slice(0, 5);
 
   const getMovementIcon = (score: number) => {
-    if (score >= 70) return { icon: Zap, color: 'text-emerald-500', label: 'Fast' };
-    if (score >= 30) return { icon: Activity, color: 'text-blue-500', label: 'Steady' };
-    return { icon: Ghost, color: 'text-gray-400', label: 'Slow' };
+    if (score >= 70) return { icon: Zap, color: 'text-emerald-500', label: t('dash_movement_fast') };
+    if (score >= 30) return { icon: Activity, color: 'text-blue-500', label: t('dash_movement_steady') };
+    return { icon: Ghost, color: 'text-gray-400', label: t('dash_movement_slow') };
   };
 
   return (
@@ -165,11 +165,11 @@ export default function DashboardPage() {
               <LayoutDashboard size={20} className="text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+              <h1 className="text-xl font-bold text-gray-900">{t('dash_title')}</h1>
               <p className="text-xs text-gray-500">
                 {latestSnapshot
-                  ? `Last updated: ${format(latestSnapshot.date, 'dd MMM yyyy HH:mm')}`
-                  : 'No inventory data yet'}
+                  ? `${t('dash_last_updated')}: ${format(latestSnapshot.date, 'dd MMM yyyy HH:mm')}`
+                  : t('dash_no_inventory')}
               </p>
             </div>
           </div>
@@ -185,7 +185,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2 text-gray-500">
                 <DollarSign size={16} className="text-violet-500" />
-                <span className="text-xs font-semibold uppercase tracking-wide">Inventory Value</span>
+                <span className="text-xs font-semibold uppercase tracking-wide">{t('dash_kpi_inv_value')}</span>
               </div>
               <Info size={13} className="text-gray-300 group-hover:text-violet-400 transition-colors" />
             </div>
@@ -193,7 +193,7 @@ export default function DashboardPage() {
               ${inventoryValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              {latestSnapshot?.products.length || 0} products
+              {latestSnapshot?.products.length || 0} {t('dash_products')}
             </p>
           </button>
 
@@ -203,7 +203,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2 text-gray-500">
                 <ShoppingCart size={16} className="text-pink-500" />
-                <span className="text-xs font-semibold uppercase tracking-wide">Pending Order</span>
+                <span className="text-xs font-semibold uppercase tracking-wide">{t('dash_kpi_pending_order')}</span>
               </div>
               <Info size={13} className="text-gray-300 group-hover:text-pink-400 transition-colors" />
             </div>
@@ -211,7 +211,7 @@ export default function DashboardPage() {
               ${currentOrderValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              {orderLines.filter((l) => l.selected).length} items to order
+              {orderLines.filter((l) => l.selected).length} {t('dash_items_to_order')}
             </p>
           </button>
 
@@ -221,7 +221,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2 text-gray-500">
                 <Package size={16} className="text-red-500" />
-                <span className="text-xs font-semibold uppercase tracking-wide">Stock Alerts</span>
+                <span className="text-xs font-semibold uppercase tracking-wide">{t('dash_kpi_stock_alerts')}</span>
               </div>
               <Info size={13} className="text-gray-300 group-hover:text-red-400 transition-colors" />
             </div>
@@ -229,7 +229,7 @@ export default function DashboardPage() {
               <p className="text-2xl font-bold text-red-600">{stockBreakdown.red}</p>
               <p className="text-sm text-orange-500 font-bold mb-0.5">+{stockBreakdown.orange}</p>
             </div>
-            <p className="text-xs text-gray-400 mt-1">Out · Low stock</p>
+            <p className="text-xs text-gray-400 mt-1">{t('hub_out')} · {t('hub_low')}</p>
           </button>
 
           {/* Confirmed Orders */}
@@ -238,15 +238,15 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2 text-gray-500">
                 <TrendingUp size={16} className="text-emerald-500" />
-                <span className="text-xs font-semibold uppercase tracking-wide">Confirmed Orders</span>
+                <span className="text-xs font-semibold uppercase tracking-wide">{t('dash_kpi_confirmed_orders')}</span>
               </div>
               <Info size={13} className="text-gray-300 group-hover:text-emerald-400 transition-colors" />
             </div>
             <p className="text-2xl font-bold text-emerald-700">{confirmedOrders.length}</p>
             <p className="text-xs text-gray-400 mt-1">
               {confirmedOrders.length > 0
-                ? `Last: ${format(new Date(confirmedOrders[0].confirmedAt), 'dd MMM')}`
-                : 'No orders yet'}
+                ? `${t('dash_last')}: ${format(new Date(confirmedOrders[0].confirmedAt), 'dd MMM')}`
+                : t('dash_no_orders')}
             </p>
           </button>
         </div>
@@ -270,7 +270,7 @@ export default function DashboardPage() {
                     advancedKPIs.sfi >= 80 ? 'text-emerald-600' :
                     advancedKPIs.sfi >= 50 ? 'text-orange-500' : 'text-red-500'
                   } />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">Stock Fulfillment</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">{t('dash_kpi_sfi')}</span>
                 </div>
                 <Info size={13} className="text-gray-300 group-hover:text-indigo-300 transition-colors" />
               </div>
@@ -283,7 +283,7 @@ export default function DashboardPage() {
                 {advancedKPIs.sfi !== null ? `${advancedKPIs.sfi.toFixed(1)}%` : '—'}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                Tracking <span className="font-semibold text-gray-600">{advancedKPIs.withTargetCount}</span> of <span className="font-semibold text-gray-600">{advancedKPIs.totalProducts}</span> products
+                {t('dash_tracking')} <span className="font-semibold text-gray-600">{advancedKPIs.withTargetCount}</span> {t('dash_of')} <span className="font-semibold text-gray-600">{advancedKPIs.totalProducts}</span> {t('dash_products')}
               </p>
             </button>
 
@@ -301,7 +301,7 @@ export default function DashboardPage() {
                     advancedKPIs.oosRate === 0 ? 'text-emerald-600' :
                     advancedKPIs.oosRate < 10 ? 'text-orange-500' : 'text-red-500'
                   } />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">OOS Rate</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">{t('dash_kpi_oos')}</span>
                 </div>
                 <Info size={13} className="text-gray-300 group-hover:text-orange-300 transition-colors" />
               </div>
@@ -313,7 +313,7 @@ export default function DashboardPage() {
                 {advancedKPIs.oosRate.toFixed(1)}%
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                {advancedKPIs.oosCount} of {advancedKPIs.totalProducts} products at 0
+                {advancedKPIs.oosCount} {t('dash_of')} {advancedKPIs.totalProducts} {t('dash_at_zero')}
               </p>
             </button>
 
@@ -323,14 +323,14 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <TrendingDown size={16} className="text-indigo-500" />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">Capital Gap</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">{t('dash_kpi_gap')}</span>
                 </div>
                 <Info size={13} className="text-gray-300 group-hover:text-indigo-400 transition-colors" />
               </div>
               <p className="text-2xl font-bold text-indigo-700">
                 ${advancedKPIs.capitalGap.toLocaleString('en-US', { maximumFractionDigits: 0 })}
               </p>
-              <p className="text-xs text-gray-400 mt-1">Investment to reach 100% SFI</p>
+              <p className="text-xs text-gray-400 mt-1">{t('dash_invest_sfi')}</p>
             </button>
 
             {/* Overstock */}
@@ -342,7 +342,7 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <Layers size={16} className={advancedKPIs.overstockCount === 0 ? 'text-gray-400' : 'text-amber-500'} />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">Overstock</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">{t('dash_kpi_overstock')}</span>
                 </div>
                 <Info size={13} className="text-gray-300 group-hover:text-amber-400 transition-colors" />
               </div>
@@ -353,7 +353,7 @@ export default function DashboardPage() {
                 {advancedKPIs.overstockCount}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                {advancedKPIs.overstockCount > 0 ? 'Click to see ranked list →' : 'All products within target'}
+                {advancedKPIs.overstockCount > 0 ? t('dash_click_overstock') : t('dash_within_target')}
               </p>
             </button>
           </div>
@@ -361,12 +361,12 @@ export default function DashboardPage() {
 
         {/* ── Stock Status Traffic Light ── */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <h3 className="font-semibold text-gray-800 mb-4">Stock Health Overview</h3>
+          <h3 className="font-semibold text-gray-800 mb-4">{t('dash_stock_health')}</h3>
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: 'In Stock (≥70% target)', count: stockBreakdown.green, color: 'bg-green-500', bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
-              { label: 'Low Stock (20–70%)', count: stockBreakdown.orange, color: 'bg-orange-400', bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
-              { label: 'Critical / Out (≤20%)', count: stockBreakdown.red, color: 'bg-red-500', bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+              { label: t('dash_in_stock'), count: stockBreakdown.green, color: 'bg-green-500', bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+              { label: t('dash_low_stock'), count: stockBreakdown.orange, color: 'bg-orange-400', bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+              { label: t('dash_critical'), count: stockBreakdown.red, color: 'bg-red-500', bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
             ].map((s) => {
               const total = stockBreakdown.green + stockBreakdown.orange + stockBreakdown.red;
               const pct = total > 0 ? Math.round((s.count / total) * 100) : 0;
@@ -380,7 +380,7 @@ export default function DashboardPage() {
                   <div className="w-full bg-white/50 rounded-full h-1.5 overflow-hidden">
                     <div className={cn('h-full rounded-full', s.color)} style={{ width: `${pct}%` }} />
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">{pct}% of products</p>
+                  <p className="text-xs text-gray-500 mt-1">{pct}% {t('dash_of')} {t('dash_products')}</p>
                 </div>
               );
             })}
@@ -393,18 +393,18 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Trophy size={18} className="text-yellow-500" />
-                <h3 className="font-semibold text-gray-800">Top 10 Most Ordered</h3>
+                <h3 className="font-semibold text-gray-800">{t('dash_top10')}</h3>
               </div>
               <Link href="/history" className="text-xs text-pink-500 hover:underline">
-                View history →
+                {t('dash_view_history')}
               </Link>
             </div>
 
             {top10Products.length === 0 ? (
               <div className="text-center py-8">
                 <BarChart3 size={32} className="text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">No confirmed orders yet.</p>
-                <p className="text-xs text-gray-400 mt-1">Confirm orders to see your top products here.</p>
+                <p className="text-sm text-gray-500">{t('dash_no_orders_yet')}</p>
+                <p className="text-xs text-gray-400 mt-1">{t('dash_confirm_orders_hint')}</p>
               </div>
             ) : (
               <div className="h-64">
@@ -421,7 +421,7 @@ export default function DashboardPage() {
                     />
                     <Tooltip
                       contentStyle={{ borderRadius: 8, fontSize: 11 }}
-                      formatter={(v) => [`${v} units`, 'Ordered']}
+                      formatter={(v) => [`${v} ${t('dash_chart_units')}`, t('dash_chart_ordered')]}
                     />
                     <Bar dataKey="totalOrdered" radius={[0, 4, 4, 0]}>
                       {top10Products.slice(0, 8).map((_, i) => (
@@ -460,13 +460,13 @@ export default function DashboardPage() {
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
             <div className="flex items-center gap-2 mb-4">
               <DollarSign size={18} className="text-emerald-500" />
-              <h3 className="font-semibold text-gray-800">Inventory Value by Supplier</h3>
+              <h3 className="font-semibold text-gray-800">{t('dash_by_supplier')}</h3>
             </div>
 
             {supplierBreakdown.length === 0 ? (
               <div className="text-center py-8">
                 <Package size={32} className="text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">No inventory data yet.</p>
+                <p className="text-sm text-gray-500">{t('dash_no_inventory')}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -502,10 +502,10 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Star size={18} className="text-yellow-500 fill-yellow-500" />
-                <h3 className="font-semibold text-gray-800">Top Performing Products (by Daily Velocity)</h3>
+                <h3 className="font-semibold text-gray-800">{t('dash_top_popular')}</h3>
               </div>
               <Link href="/inventory-hub/behavior" className="text-xs text-pink-500 hover:underline">
-                Full analysis →
+                {t('dash_full_analysis')}
               </Link>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -536,7 +536,7 @@ export default function DashboardPage() {
                       <span className="text-sm font-bold text-gray-700">{p.overallScore.toFixed(0)}</span>
                     </div>
                     <p className="text-[10px] text-gray-400">
-                      {p.dailyVelocity.toFixed(2)} units/day
+                      {p.dailyVelocity.toFixed(2)} {t('dash_units_per_day')}
                     </p>
                     <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                       <div
@@ -554,9 +554,9 @@ export default function DashboardPage() {
         {/* ── Quick Actions ── */}
         <div className="grid grid-cols-3 gap-4">
           {[
-            { href: '/inventory-hub', label: 'Import Inventory', sub: 'Upload CSV snapshot', icon: Package, color: 'from-blue-500 to-blue-600 shadow-blue-500/25' },
-            { href: '/orders', label: 'Review Orders', sub: `${orderLines.filter(l=>l.selected).length} items pending`, icon: ShoppingCart, color: 'from-pink-500 to-pink-600 shadow-pink-500/25' },
-            { href: '/history', label: 'Order History', sub: `${confirmedOrders.length} past orders`, icon: BarChart3, color: 'from-indigo-500 to-indigo-600 shadow-indigo-500/25' },
+            { href: '/inventory-hub', label: t('hub_import_inventory'), sub: t('dash_upload_csv'), icon: Package, color: 'from-blue-500 to-blue-600 shadow-blue-500/25' },
+            { href: '/orders', label: t('dash_review_orders'), sub: `${orderLines.filter(l=>l.selected).length} ${t('dash_items_pending')}`, icon: ShoppingCart, color: 'from-pink-500 to-pink-600 shadow-pink-500/25' },
+            { href: '/history', label: t('history_title'), sub: `${confirmedOrders.length} ${t('dash_past_orders')}`, icon: BarChart3, color: 'from-indigo-500 to-indigo-600 shadow-indigo-500/25' },
           ].map((a) => (
             <Link key={a.href} href={a.href} className="group bg-white rounded-2xl border border-gray-200 p-5 hover:shadow-lg transition-all hover:-translate-y-0.5">
               <div className={cn('w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center mb-3 shadow-lg', a.color)}>
@@ -565,7 +565,7 @@ export default function DashboardPage() {
               <p className="font-semibold text-gray-800 mb-0.5">{a.label}</p>
               <p className="text-xs text-gray-400">{a.sub}</p>
               <div className="flex items-center gap-1 mt-3 text-xs text-pink-500 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                Open <ArrowRight size={12} />
+                {t('dash_open')} <ArrowRight size={12} />
               </div>
             </Link>
           ))}
@@ -587,14 +587,14 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <Info size={18} className="text-violet-500" />
                 <h3 className="font-bold text-gray-800">
-                  {activeKpiModal === 'inventory_value' && 'Inventory Value'}
-                  {activeKpiModal === 'pending_order' && 'Pending Order Value'}
-                  {activeKpiModal === 'stock_alerts' && 'Stock Alerts'}
-                  {activeKpiModal === 'confirmed_orders' && 'Confirmed Orders'}
-                  {activeKpiModal === 'sfi' && 'Stock Fulfillment Index (SFI)'}
-                  {activeKpiModal === 'oos_rate' && 'Out-of-Stock Rate'}
-                  {activeKpiModal === 'capital_gap' && 'Capital Gap'}
-                  {activeKpiModal === 'overstock' && 'Overstock Products'}
+                  {activeKpiModal === 'inventory_value' && t('dash_kpi_inv_value')}
+                  {activeKpiModal === 'pending_order' && t('dash_kpi_pending_order')}
+                  {activeKpiModal === 'stock_alerts' && t('dash_kpi_stock_alerts')}
+                  {activeKpiModal === 'confirmed_orders' && t('dash_kpi_confirmed_orders')}
+                  {activeKpiModal === 'sfi' && t('dash_kpi_sfi')}
+                  {activeKpiModal === 'oos_rate' && t('dash_kpi_oos')}
+                  {activeKpiModal === 'capital_gap' && t('dash_kpi_gap')}
+                  {activeKpiModal === 'overstock' && t('dash_kpi_overstock')}
                 </h3>
               </div>
               <button onClick={() => setActiveKpiModal(null)} className="p-1.5 hover:bg-gray-100 rounded-lg">
@@ -732,16 +732,16 @@ export default function DashboardPage() {
                   {overstockProductsList.length === 0 ? (
                     <div className="text-center py-8 text-gray-400">
                       <Layers size={32} className="mx-auto mb-2" />
-                      <p className="text-sm">No overstock products found</p>
+                      <p className="text-sm">{t('dash_no_overstock')}</p>
                     </div>
                   ) : (
                     <div>
                       <div className="flex items-center justify-between text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">
-                        <span>Product</span>
+                        <span>{t('dash_overstock_product')}</span>
                         <span className="flex gap-4">
-                          <span className="w-12 text-right">Stock</span>
-                          <span className="w-12 text-right">Target</span>
-                          <span className="w-16 text-right text-amber-600">Excess</span>
+                          <span className="w-12 text-right">{t('inv_stock')}</span>
+                          <span className="w-12 text-right">{t('inv_target')}</span>
+                          <span className="w-16 text-right text-amber-600">{t('dash_overstock_excess')}</span>
                         </span>
                       </div>
                       <div className="space-y-1 max-h-72 overflow-y-auto">
@@ -766,7 +766,7 @@ export default function DashboardPage() {
                         ))}
                       </div>
                       <p className="text-[10px] text-gray-400 mt-3 text-center">
-                        Total excess capital locked: ${overstockProductsList.reduce((s, p) => s + p.excessValue, 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                        {t('dash_excess_capital')}: ${overstockProductsList.reduce((s, p) => s + p.excessValue, 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                       </p>
                     </div>
                   )}

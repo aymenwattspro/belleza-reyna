@@ -28,7 +28,7 @@ import {
 } from '@/lib/utils/timeline-parsers';
 import { InventorySnapshot } from '@/lib/types/inventory-timeline';
 
-interface ColField { key: keyof ColMapping; labelKey: keyof typeof import('@/contexts/LanguageContext')['LanguageContextType'] | any; required?: boolean; }
+interface ColField { key: keyof ColMapping; labelKey: string; required?: boolean; }
 const COL_FIELDS: ColField[] = [
   { key: 'claveIdx',         labelKey: 'import_col_ref',   required: true },
   { key: 'descIdx',          labelKey: 'import_col_desc',        required: true },
@@ -39,20 +39,32 @@ const COL_FIELDS: ColField[] = [
   { key: 'piezasIdx',        labelKey: 'import_col_units' },
 ];
 
+type ImportMode = 'snapshot' | 'targetstock';
+
 interface GuidedImportProps {
   preview: ParsePreview;
   supplierName: string;
-  onSupplierChange: (s: string) => void;
-  onConfirm: (mapping: ColMapping, supplier: string) => void;
+  onConfirm: (mapping: ColMapping, supplier: string, mode: ImportMode) => void;
   onCancel: () => void;
-  importType: 'inventory' | 'targetstock';
 }
 
-function GuidedImportModal({ preview, supplierName, onSupplierChange, onConfirm, onCancel, importType }: GuidedImportProps) {
+function GuidedImportModal({ preview, supplierName, onConfirm, onCancel }: GuidedImportProps) {
   const { t } = useLanguage();
+  const [importMode, setImportMode] = useState<ImportMode>('snapshot');
   const [mapping, setMapping] = useState<ColMapping>({ ...preview.mapping });
   const [localSupplier, setLocalSupplier] = useState(supplierName);
   const [customSupplier, setCustomSupplier] = useState('');
+
+  useEffect(() => {
+    if (importMode === 'targetstock') {
+      setMapping((prev) => ({ ...prev, existenciaIdx: -1 }));
+    }
+  }, [importMode]);
+
+  const visibleColFields = useMemo(
+    () => (importMode === 'targetstock' ? COL_FIELDS.filter((f) => f.key !== 'existenciaIdx') : COL_FIELDS),
+    [importMode],
+  );
 
   const setField = (field: keyof ColMapping, value: number) => setMapping((prev) => ({ ...prev, [field]: value }));
 
@@ -70,7 +82,7 @@ function GuidedImportModal({ preview, supplierName, onSupplierChange, onConfirm,
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
             <h2 className="text-lg font-bold text-gray-900">
-              📦 {t('hub_import_inventory')}
+              📦 {importMode === 'targetstock' ? t('hub_import_targets') : t('hub_import_inventory')}
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">~{estimatedCount} {t('import_products_ready')}</p>
           </div>
@@ -78,6 +90,25 @@ function GuidedImportModal({ preview, supplierName, onSupplierChange, onConfirm,
         </div>
 
         <div className="p-6 space-y-5">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">{t('import')}</label>
+            <div className="flex gap-1 p-1 bg-gray-100 rounded-xl">
+              <button type="button" onClick={() => setImportMode('snapshot')}
+                className={cn('flex-1 px-3 py-2 text-xs font-semibold rounded-lg transition-all',
+                  importMode === 'snapshot' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
+                {t('import_mode_snapshot')}
+              </button>
+              <button type="button" onClick={() => setImportMode('targetstock')}
+                className={cn('flex-1 px-3 py-2 text-xs font-semibold rounded-lg transition-all',
+                  importMode === 'targetstock' ? 'bg-white text-pink-600 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
+                {t('import_mode_target')}
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              {importMode === 'targetstock' ? t('import_mode_target_hint') : t('import_mode_snapshot_hint')}
+            </p>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">{t('import_supplier_name')}</label>
             <div className="flex gap-2">
@@ -106,9 +137,9 @@ function GuidedImportModal({ preview, supplierName, onSupplierChange, onConfirm,
             <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">{t('import_col_mapping')}</label>
             <p className="text-xs text-gray-400 mb-3">{t('import_detected_headers')}: {preview.allHeaders.filter(Boolean).join(', ')}</p>
             <div className="grid grid-cols-2 gap-3">
-              {COL_FIELDS.map(({ key, labelKey, required }) => (
+              {visibleColFields.map(({ key, labelKey, required }) => (
                 <div key={key}>
-                  <label className="block text-xs text-gray-500 mb-1">{t(labelKey)}{required && <span className="text-red-500 ml-1">*</span>}</label>
+                  <label className="block text-xs text-gray-500 mb-1">{t(labelKey as Parameters<typeof t>[0])}{required && <span className="text-red-500 ml-1">*</span>}</label>
                   <select value={(mapping as any)[key]} onChange={(e) => setField(key as keyof ColMapping, parseInt(e.target.value))}
                     className={cn('w-full px-2 py-1.5 rounded-lg border text-xs outline-none',
                       required && (mapping as any)[key] === -1 ? 'border-red-300 bg-red-50' : 'border-gray-200 focus:border-pink-400')}>
@@ -129,8 +160,14 @@ function GuidedImportModal({ preview, supplierName, onSupplierChange, onConfirm,
                     <tr>
                       <th className="px-3 py-2 text-left font-semibold text-gray-600">{t('import_ref_sku')}</th>
                       <th className="px-3 py-2 text-left font-semibold text-gray-600">{t('orders_description')}</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('inv_stock')}</th>
-                      <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('orders_unit_cost')}</th>
+                      {importMode === 'snapshot' ? (
+                        <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('inv_stock')}</th>
+                      ) : (
+                        <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('import_col_target')}</th>
+                      )}
+                      {importMode === 'snapshot' && (
+                        <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('orders_unit_cost')}</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -138,8 +175,14 @@ function GuidedImportModal({ preview, supplierName, onSupplierChange, onConfirm,
                       <tr key={i} className="border-t border-gray-100">
                         <td className="px-3 py-2 font-mono text-gray-700">{mapping.claveIdx >= 0 ? (row[mapping.claveIdx] || '—') : '—'}</td>
                         <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate">{mapping.descIdx >= 0 ? (row[mapping.descIdx] || '—') : '—'}</td>
-                        <td className="px-3 py-2 text-right font-medium text-gray-700">{mapping.existenciaIdx >= 0 ? (row[mapping.existenciaIdx] || '0') : '—'}</td>
-                        <td className="px-3 py-2 text-right text-gray-600">{mapping.precioCIdx >= 0 ? (row[mapping.precioCIdx] || '—') : '—'}</td>
+                        {importMode === 'snapshot' ? (
+                          <td className="px-3 py-2 text-right font-medium text-gray-700">{mapping.existenciaIdx >= 0 ? (row[mapping.existenciaIdx] || '0') : '—'}</td>
+                        ) : (
+                          <td className="px-3 py-2 text-right font-medium text-gray-700">{mapping.stockObjetivoIdx >= 0 ? (row[mapping.stockObjetivoIdx] || '—') : '—'}</td>
+                        )}
+                        {importMode === 'snapshot' && (
+                          <td className="px-3 py-2 text-right text-gray-600">{mapping.precioCIdx >= 0 ? (row[mapping.precioCIdx] || '—') : '—'}</td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -162,7 +205,12 @@ function GuidedImportModal({ preview, supplierName, onSupplierChange, onConfirm,
 
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
           <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">{t('cancel')}</button>
-          <button onClick={() => onConfirm(mapping, effectiveSupplier)} disabled={estimatedCount === 0}
+          <button
+            onClick={() => {
+              const effectiveMapping = importMode === 'targetstock' ? { ...mapping, existenciaIdx: -1 } : mapping;
+              onConfirm(effectiveMapping, effectiveSupplier, importMode);
+            }}
+            disabled={estimatedCount === 0}
             className="px-5 py-2 bg-pink-500 text-white text-sm font-semibold rounded-xl hover:bg-pink-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
             {t('import')} {estimatedCount}
           </button>
@@ -182,8 +230,7 @@ export default function InventoryHubPage() {
   const [preview, setPreview] = useState<ParsePreview | null>(null);
   const [pendingSupplier, setPendingSupplier] = useState('General');
   const [isImporting, setIsImporting] = useState(false);
-  const inventoryInputRef = useRef<HTMLInputElement>(null);
-  const targetInputRef = useRef<HTMLInputElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [inventorySearch, setInventorySearch] = useState('');
   const [behaviorSearch, setBehaviorSearch] = useState('');
   const [stockFilter, setStockFilter] = useState<'all' | 'green' | 'orange' | 'red' | 'pending'>('all');
@@ -281,55 +328,79 @@ export default function InventoryHubPage() {
       else { const buf = await file.arrayBuffer(); prev = parseExcelToPreview(buf, file.name); }
       setPendingSupplier(prev.detectedSupplier);
       setPreview(prev);
-    } catch (e: any) { toast.error(e.message || 'Failed to read file'); }
-  }, []);
+    } catch (e: any) { toast.error(e.message || t('import_failed')); }
+  }, [t]);
 
-  const handleConfirmImport = useCallback(async (mapping: ColMapping, supplier: string) => {
+  const handleConfirmImport = useCallback(async (mapping: ColMapping, supplier: string, mode: ImportMode) => {
     if (!preview) return;
     setIsImporting(true);
     try {
-      const products = applyMappingToRows(preview.rawRows, mapping, supplier);
-      if (products.length === 0) { toast.error('No valid products found with current mapping.'); return; }
+      const effectiveMapping = mode === 'targetstock' ? { ...mapping, existenciaIdx: -1 } : mapping;
+      const products = applyMappingToRows(preview.rawRows, effectiveMapping, supplier);
+      if (products.length === 0) { toast.error(t('import_no_valid_products')); return; }
+
+      if (mode === 'targetstock') {
+        const targetUpdates = new Map<string, { stockObjetivo: number; piezas: number; descripcion?: string; proveedor?: string }>();
+        products.forEach((p) => {
+          if (p.stockObjetivo != null || p.piezas != null) {
+            targetUpdates.set(p.clave, {
+              stockObjetivo: p.stockObjetivo ?? 0,
+              piezas: p.piezas ?? 1,
+              descripcion: p.descripcion,
+              proveedor: supplier || p.proveedor,
+            });
+          }
+        });
+        if (targetUpdates.size === 0) { toast.error(t('import_no_targets_detected')); return; }
+        const count = await updateTargetStock(targetUpdates);
+        toast.success(t('import_target_success').replace('{count}', String(count)));
+        setPreview(null);
+        return;
+      }
+
       const fileHash = hashProducts(products);
       const isDuplicate = await checkFileDuplicate(fileHash);
-      if (isDuplicate) { toast.error('This exact inventory snapshot was already imported. No changes made.'); setPreview(null); return; }
+      if (isDuplicate) { toast.error(t('import_duplicate_snapshot')); setPreview(null); return; }
       const snapshot: InventorySnapshot = {
         id: `snap_${Date.now()}`, date: new Date(), timestamp: Date.now(),
         fileName: `import_${new Date().toISOString().slice(0, 10)}`, supplierName: supplier, fileHash, products,
       };
       const result = await addSnapshot(snapshot, fileHash);
 
-      const targetUpdates = new Map();
-      products.forEach(p => {
+      const targetUpdates = new Map<string, { stockObjetivo: number; piezas: number; descripcion?: string; proveedor?: string }>();
+      products.forEach((p) => {
         if (p.stockObjetivo != null || p.piezas != null) {
-          targetUpdates.set(p.clave, { stockObjetivo: p.stockObjetivo ?? p.existencia, piezas: p.piezas ?? 1 });
+          targetUpdates.set(p.clave, {
+            stockObjetivo: p.stockObjetivo ?? 0,
+            piezas: p.piezas ?? 1,
+            descripcion: p.descripcion,
+            proveedor: supplier || p.proveedor,
+          });
         }
       });
-      if (targetUpdates.size > 0) {
-        await updateTargetStock(targetUpdates);
-      }
+      if (targetUpdates.size > 0) await updateTargetStock(targetUpdates);
 
       const parts: string[] = [];
-      if (result.newProducts > 0) parts.push(`${result.newProducts} new`);
-      if (result.updatedProducts > 0) parts.push(`${result.updatedProducts} updated`);
-      if (result.unchangedProducts > 0) parts.push(`${result.unchangedProducts} unchanged`);
+      if (result.newProducts > 0) parts.push(`${result.newProducts} ${t('import_new')}`);
+      if (result.updatedProducts > 0) parts.push(`${result.updatedProducts} ${t('import_updated')}`);
+      if (result.unchangedProducts > 0) parts.push(`${result.unchangedProducts} ${t('import_unchanged')}`);
       toast.success(`✅ ${parts.join(' · ')}`);
-      
       if (targetUpdates.size > 0) {
-        toast.success(`🎯 Target stock updated for ${targetUpdates.size} products`);
+        toast.success(t('import_target_success').replace('{count}', String(targetUpdates.size)));
       }
       setPreview(null);
-    } catch (e: any) { toast.error(e.message || 'Import failed'); }
+    } catch (e: any) { toast.error(e.message || t('import_failed')); }
     finally { setIsImporting(false); }
-  }, [preview, checkFileDuplicate, addSnapshot, updateTargetStock]);
+  }, [preview, checkFileDuplicate, addSnapshot, updateTargetStock, t]);
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {preview && (
         <GuidedImportModal
-          preview={preview} supplierName={pendingSupplier} onSupplierChange={setPendingSupplier}
+          preview={preview}
+          supplierName={pendingSupplier}
           onConfirm={handleConfirmImport}
-          onCancel={() => setPreview(null)} importType="inventory"
+          onCancel={() => setPreview(null)}
         />
       )}
 
@@ -349,8 +420,8 @@ export default function InventoryHubPage() {
               <>
                 <button
                   onClick={() => {
-                    if (window.confirm('⚠️ This will delete ALL inventory data. This cannot be undone.')) {
-                      clearAllData().then(() => toast.success('All inventory data cleared.'));
+                    if (window.confirm(`⚠️ ${t('hub_confirm_reset')}`)) {
+                      clearAllData().then(() => toast.success(t('hub_data_cleared')));
                     }
                   }}
                   className="flex items-center gap-1.5 px-3 py-2 text-gray-400 hover:text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200 text-xs font-medium rounded-xl transition-colors"
@@ -359,15 +430,15 @@ export default function InventoryHubPage() {
                 </button>
               </>
             )}
-            <button onClick={() => inventoryInputRef.current?.click()}
+            <button onClick={() => importInputRef.current?.click()}
               className="flex items-center gap-2 px-4 py-2 bg-pink-500 text-white text-sm font-semibold rounded-xl hover:bg-pink-600 transition-colors">
-              <Upload size={14} /> {t('hub_import_inventory')}
+              <Upload size={14} /> {t('hub_import')}
             </button>
           </div>
         </div>
       </div>
 
-      <input ref={inventoryInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
+      <input ref={importInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ''; }} />
 
       {/* Import Timeline */}
@@ -417,7 +488,7 @@ export default function InventoryHubPage() {
                 <Upload size={32} className="text-gray-300 mb-3" />
                 <p className="text-sm font-medium text-gray-500">{t('hub_no_imports')}</p>
                 <p className="text-xs text-gray-400 mt-1">{t('hub_upload_first')}</p>
-                <button onClick={() => inventoryInputRef.current?.click()}
+                <button onClick={() => importInputRef.current?.click()}
                   className="mt-4 px-4 py-2 bg-pink-500 text-white text-sm font-medium rounded-xl hover:bg-pink-600 transition-colors">
                   {t('hub_import_first')}
                 </button>
@@ -554,6 +625,7 @@ export default function InventoryHubPage() {
 }
 
 function TimelineChip({ snap, isLatest, onDelete }: { snap: InventorySnapshot; isLatest: boolean; onDelete: (id: string) => Promise<void>; }) {
+  const { t } = useLanguage();
   const [confirming, setConfirming] = useState(false);
   return (
     <div className={cn('flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs shrink-0 group transition-all',
@@ -565,7 +637,7 @@ function TimelineChip({ snap, isLatest, onDelete }: { snap: InventorySnapshot; i
       <span className="opacity-60">{snap.products.length}p</span>
       {confirming ? (
         <div className="flex items-center gap-1 ml-1">
-          <button onClick={() => onDelete(snap.id)} className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-medium hover:bg-red-600">Delete</button>
+          <button onClick={() => onDelete(snap.id)} className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-medium hover:bg-red-600">{t('hub_delete_snap')}</button>
           <button onClick={() => setConfirming(false)} className="text-[10px] text-gray-400 hover:text-gray-600 px-1">✕</button>
         </div>
       ) : (

@@ -17,11 +17,13 @@ import { useInventory } from '@/contexts/InventoryContext';
 import { useProductSettings } from '@/contexts/ProductSettingsContext';
 import { adjustOrder, getStockStatus, getStatusClasses } from '@/lib/utils/adjust-order';
 import { format } from 'date-fns';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 function ProductDetailInner() {
   const params = useParams();
   const router = useRouter();
   const clave = decodeURIComponent(params.clave as string);
+  const { t } = useLanguage();
 
   const { latestSnapshot, snapshots, getProductHistory, getPopularityScore } = useInventory();
   const { get: getSettings, save: saveSettings } = useProductSettings();
@@ -83,9 +85,9 @@ function ProductDetailInner() {
     setIsSaving(true);
     try {
       await saveSettings({ clave, minStockUnits, minStockCases, notes, updatedAt: new Date().toISOString() });
-      toast.success('Settings saved');
+      toast.success(t('product_settings_saved'));
     } catch {
-      toast.error('Error saving settings');
+      toast.error(t('product_settings_error'));
     } finally {
       setIsSaving(false);
     }
@@ -95,12 +97,12 @@ function ProductDetailInner() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center">
         <Package size={48} className="text-gray-300 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-600 mb-2">Product not found</h2>
+        <h2 className="text-xl font-semibold text-gray-600 mb-2">{t('product_not_found')}</h2>
         <p className="text-gray-400 mb-6">
-          Reference: <code className="bg-gray-100 px-2 py-0.5 rounded">{clave}</code>
+          {t('product_reference')}: <code className="bg-gray-100 px-2 py-0.5 rounded">{clave}</code>
         </p>
         <Link href="/inventory-hub" className="px-4 py-2 bg-pink-500 text-white rounded-xl text-sm font-medium hover:bg-pink-600 transition-colors">
-          Back to Inventory
+          {t('product_back_inventory')}
         </Link>
       </div>
     );
@@ -110,9 +112,9 @@ function ProductDetailInner() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center">
         <Package size={48} className="text-gray-300 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-600 mb-2">No inventory data</h2>
+        <h2 className="text-xl font-semibold text-gray-600 mb-2">{t('inv_no_inventory')}</h2>
         <Link href="/inventory-hub" className="px-4 py-2 bg-pink-500 text-white rounded-xl text-sm font-medium hover:bg-pink-600 transition-colors">
-          Import inventory →
+          {t('product_import_inventory')}
         </Link>
       </div>
     );
@@ -141,7 +143,7 @@ function ProductDetailInner() {
             className="flex items-center gap-2 px-4 py-2 bg-pink-500 text-white text-sm font-medium rounded-xl hover:bg-pink-600 disabled:opacity-50 transition-colors"
           >
             <Save size={14} />
-            {isSaving ? 'Saving...' : 'Save Settings'}
+            {isSaving ? t('product_saving') : t('product_save_settings')}
           </button>
         </div>
       </div>
@@ -152,7 +154,7 @@ function ProductDetailInner() {
           <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
             <div className="flex items-center gap-2 text-gray-500 mb-3">
               <CalendarDays size={16} />
-              <span className="text-xs font-medium uppercase tracking-wide">Last Import</span>
+              <span className="text-xs font-medium uppercase tracking-wide">{t('product_last_import')}</span>
             </div>
             <p className="text-lg font-bold text-gray-800">
               {lastImportDate ? format(lastImportDate, 'dd MMM yyyy') : '—'}
@@ -163,27 +165,27 @@ function ProductDetailInner() {
           <div className={cn('bg-white rounded-2xl p-5 border shadow-sm', stockStatus === 'red' ? 'border-red-200' : stockStatus === 'orange' ? 'border-orange-200' : 'border-gray-200')}>
             <div className="flex items-center gap-2 text-gray-500 mb-3">
               <Package size={16} />
-              <span className="text-xs font-medium uppercase tracking-wide">Current Stock</span>
+              <span className="text-xs font-medium uppercase tracking-wide">{t('product_current_stock')}</span>
             </div>
             <p className={cn('text-3xl font-bold', stockStatus === 'red' ? 'text-red-600' : stockStatus === 'orange' ? 'text-orange-500' : 'text-emerald-600')}>
               {currentStock}
             </p>
-            <p className="text-xs text-gray-400 mt-1">units · target: {effectiveMinStock || '—'}</p>
+            <p className="text-xs text-gray-400 mt-1">{t('product_units_target')}: {effectiveMinStock || '—'}</p>
           </div>
 
           <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
             <div className="flex items-center gap-2 text-gray-500 mb-3">
               <DollarSign size={16} />
-              <span className="text-xs font-medium uppercase tracking-wide">Profit Margin</span>
+              <span className="text-xs font-medium uppercase tracking-wide">{t('product_profit_margin')}</span>
             </div>
             <p className="text-3xl font-bold text-gray-800">{profitMargin !== null ? `${profitMargin}%` : '—'}</p>
-            <p className="text-xs text-gray-400 mt-1">Cost ${costPrice.toFixed(2)} · Sale ${salePrice > 0 ? salePrice.toFixed(2) : '—'}</p>
+            <p className="text-xs text-gray-400 mt-1">{t('product_cost_sale')} ${costPrice.toFixed(2)} · {t('product_sale')} ${salePrice > 0 ? salePrice.toFixed(2) : '—'}</p>
           </div>
 
           <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
             <div className="flex items-center gap-2 text-gray-500 mb-3">
               <Star size={16} />
-              <span className="text-xs font-medium uppercase tracking-wide">Popularity</span>
+              <span className="text-xs font-medium uppercase tracking-wide">{t('product_popularity')}</span>
             </div>
             {popularityScore ? (
               <>
@@ -196,7 +198,7 @@ function ProductDetailInner() {
                 </div>
               </>
             ) : (
-              <p className="text-sm text-gray-400">Need 2+ imports</p>
+              <p className="text-sm text-gray-400">{t('product_need_imports')}</p>
             )}
           </div>
         </div>
@@ -208,11 +210,11 @@ function ProductDetailInner() {
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="font-semibold text-gray-800">Stock Evolution</h3>
-                  <p className="text-xs text-gray-500">{history.length} data points · {snapshots.length} imports</p>
+                  <h3 className="font-semibold text-gray-800">{t('product_stock_evolution')}</h3>
+                  <p className="text-xs text-gray-500">{history.length} {t('product_data_points')} · {snapshots.length} {t('product_imports')}</p>
                 </div>
                 {history.length < 2 && (
-                  <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-full">⚠️ Need 2+ imports</span>
+                  <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-full">⚠️ {t('product_need_2_imports')}</span>
                 )}
               </div>
               {history.length >= 2 ? (
@@ -225,10 +227,10 @@ function ProductDetailInner() {
                       <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }} />
                       {effectiveMinStock > 0 && (
                         <ReferenceLine y={effectiveMinStock} stroke="#f97316" strokeDasharray="4 2"
-                          label={{ value: 'Min', position: 'right', fontSize: 10 }} />
+                          label={{ value: t('product_chart_min'), position: 'right', fontSize: 10 }} />
                       )}
                       <Line type="monotone" dataKey="stock" stroke="#6366f1" strokeWidth={2.5}
-                        dot={{ r: 4, fill: '#6366f1' }} name="Stock" />
+                        dot={{ r: 4, fill: '#6366f1' }} name={t('product_chart_stock')} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -236,7 +238,7 @@ function ProductDetailInner() {
                 <div className="h-56 flex items-center justify-center">
                   <div className="text-center">
                     <Activity size={32} className="text-gray-300 mx-auto mb-3" />
-                    <p className="text-sm text-gray-500">Import more snapshots to see the evolution trend</p>
+                    <p className="text-sm text-gray-500">{t('product_import_more')}</p>
                   </div>
                 </div>
               )}
@@ -244,13 +246,13 @@ function ProductDetailInner() {
 
             {/* Order Calculation */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <h3 className="font-semibold text-gray-800 mb-4">Order Calculation</h3>
+              <h3 className="font-semibold text-gray-800 mb-4">{t('product_order_calc')}</h3>
               <div className="grid grid-cols-4 gap-3 mb-4">
                 {[
-                  { label: 'Current Stock', value: currentStock, color: false },
-                  { label: 'Target Stock', value: effectiveMinStock || '—', color: false },
-                  { label: 'Units/Case', value: piezas, color: false },
-                  { label: 'Suggest Order', value: unitsToOrder, color: unitsToOrder > 0 },
+                  { label: t('product_current_stock'), value: currentStock, color: false },
+                  { label: t('product_target_stock'), value: effectiveMinStock || '—', color: false },
+                  { label: t('product_units_case'), value: piezas, color: false },
+                  { label: t('product_suggest_order'), value: unitsToOrder, color: unitsToOrder > 0 },
                 ].map((item) => (
                   <div key={item.label} className={cn('rounded-xl p-3 text-center', item.color ? 'bg-pink-50 border border-pink-200' : 'bg-gray-50')}>
                     <p className="text-xs text-gray-500 mb-1">{item.label}</p>
@@ -262,14 +264,14 @@ function ProductDetailInner() {
                 <div className="flex items-center justify-between bg-gradient-to-r from-pink-50 to-pink-100/50 rounded-xl p-4 border border-pink-200">
                   <div className="flex items-center gap-2">
                     <ShoppingCart size={16} className="text-pink-600" />
-                    <span className="text-sm font-medium text-pink-700">Recommended order value</span>
+                    <span className="text-sm font-medium text-pink-700">{t('product_rec_order_value')}</span>
                   </div>
                   <span className="text-lg font-bold text-pink-700">${orderValue.toFixed(2)}</span>
                 </div>
               )}
               {baseOrder > 0 && unitsToOrder === 0 && (
                 <div className="bg-amber-50 rounded-xl p-3 border border-amber-200 text-sm text-amber-700">
-                  ⚠️ Base order ({baseOrder} units) is less than 50% of one case ({piezas} units). Not ordering per rounding rule.
+                  ⚠️ {t('product_rounding_rule').replace('{base}', String(baseOrder)).replace('{piezas}', String(piezas))}
                 </div>
               )}
             </div>
@@ -279,38 +281,38 @@ function ProductDetailInner() {
           <div className="space-y-5">
             {/* Settings */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <h3 className="font-semibold text-gray-800 mb-4">Minimum Stock Settings</h3>
+              <h3 className="font-semibold text-gray-800 mb-4">{t('product_min_settings')}</h3>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Min Stock (Units)</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t('product_min_units')}</label>
                   <input type="number" min={0} value={minStockUnits} onChange={(e) => setMinStockUnits(Number(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-pink-400" placeholder="e.g. 24" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Min Stock (Cases/Lots)</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t('product_min_cases')}</label>
                   <input type="number" min={0} value={minStockCases} onChange={(e) => setMinStockCases(Number(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-pink-400" placeholder="e.g. 2" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">{t('product_notes')}</label>
                   <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-pink-400 resize-none"
-                    placeholder="Internal notes..." />
+                    placeholder={t('product_notes_placeholder')} />
                 </div>
               </div>
             </div>
 
             {/* Product Info */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-              <h3 className="font-semibold text-gray-800 mb-4">Product Info</h3>
+              <h3 className="font-semibold text-gray-800 mb-4">{t('product_info')}</h3>
               <div className="space-y-1.5 text-sm">
                 {[
-                  { label: 'Reference', value: clave, mono: true },
-                  { label: 'Supplier', value: product?.proveedor || '—' },
-                  { label: 'Units/Case', value: `${piezas} pcs` },
-                  { label: 'Cost Price', value: `$${costPrice.toFixed(2)}` },
-                  { label: 'Sale Price', value: salePrice > 0 ? `$${salePrice.toFixed(2)}` : '—' },
-                  { label: 'Data Points', value: `${history.length} imports` },
+                  { label: t('product_reference'), value: clave, mono: true },
+                  { label: t('product_supplier'), value: product?.proveedor || '—' },
+                  { label: t('product_units_case'), value: `${piezas} ${t('product_pcs')}` },
+                  { label: t('product_cost_price'), value: `$${costPrice.toFixed(2)}` },
+                  { label: t('product_sale_price'), value: salePrice > 0 ? `$${salePrice.toFixed(2)}` : '—' },
+                  { label: t('product_data_points_label'), value: `${history.length} ${t('product_imports')}` },
                 ].map((row) => (
                   <div key={row.label} className="flex items-center justify-between py-1.5 border-b border-gray-50">
                     <span className="text-gray-500">{row.label}</span>
@@ -323,10 +325,10 @@ function ProductDetailInner() {
             {/* Popularity */}
             {popularityScore && (
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-                <h3 className="font-semibold text-gray-800 mb-4">Performance Metrics</h3>
+                <h3 className="font-semibold text-gray-800 mb-4">{t('product_performance')}</h3>
                 <div className="mb-3">
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-500">Overall Score</span>
+                    <span className="text-gray-500">{t('product_overall_score')}</span>
                     <span className="font-bold">{popularityScore.overallScore.toFixed(0)}/100</span>
                   </div>
                   <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -336,12 +338,12 @@ function ProductDetailInner() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   {[
-                    { label: 'Total Sales', value: popularityScore.totalSales },
-                    { label: 'Velocity', value: `${popularityScore.salesVelocity.toFixed(1)}/wk` },
-                    { label: 'Consistency', value: `${popularityScore.consistencyScore.toFixed(0)}%` },
+                    { label: t('behavior_total_sales'), value: popularityScore.totalSales },
+                    { label: t('behavior_velocity'), value: `${popularityScore.salesVelocity.toFixed(1)}/wk` },
+                    { label: t('behavior_consistency'), value: `${popularityScore.consistencyScore.toFixed(0)}%` },
                     {
-                      label: 'Trend',
-                      value: popularityScore.trend === 'rising' ? '↑ Rising' : popularityScore.trend === 'falling' ? '↓ Falling' : '→ Stable',
+                      label: t('behavior_trend'),
+                      value: popularityScore.trend === 'rising' ? t('behavior_rising') : popularityScore.trend === 'falling' ? t('behavior_falling') : t('behavior_stable_trend'),
                       colored: popularityScore.trend === 'rising' ? 'text-emerald-600' : popularityScore.trend === 'falling' ? 'text-red-500' : 'text-gray-600'
                     },
                   ].map((m) => (

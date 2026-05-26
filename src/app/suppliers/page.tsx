@@ -23,6 +23,7 @@ interface SupplierStat {
 function SuppliersPageInner() {
   const router = useRouter();
   const { latestSnapshot, popularityScores, snapshots, loading } = useInventory();
+  const { t } = useLanguage();
   const [search, setSearch] = useState('');
 
   // Derive suppliers from live inventory data
@@ -101,11 +102,11 @@ function SuppliersPageInner() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-5">
-        <h1 className="text-xl font-bold text-gray-900">Suppliers</h1>
+        <h1 className="text-xl font-bold text-gray-900">{t('suppliers_title')}</h1>
         <p className="text-xs text-gray-500 mt-0.5">
           {latestSnapshot
-            ? `Last import: ${format(latestSnapshot.date, 'dd MMM yyyy')} · ${suppliers.length} suppliers · ${totalProducts} products`
-            : 'No inventory data yet — import a file to see suppliers'}
+            ? `${t('suppliers_last_import')}: ${format(latestSnapshot.date, 'dd MMM yyyy')} · ${suppliers.length} ${t('suppliers_count')} · ${totalProducts} ${t('dash_products')}`
+            : t('suppliers_import_first')}
         </p>
       </div>
 
@@ -113,16 +114,16 @@ function SuppliersPageInner() {
       {latestSnapshot && (
         <div className="bg-white border-b border-gray-100 px-6 py-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard label="Suppliers" value={suppliers.length} sub="" color="pink" icon={Users} />
-            <StatCard label="Total Products" value={totalProducts} sub="" color="indigo" icon={Package} />
+            <StatCard label={t('suppliers_active')} value={suppliers.length} sub="" color="pink" icon={Users} />
+            <StatCard label={t('suppliers_total_products')} value={totalProducts} sub="" color="indigo" icon={Package} />
             <StatCard
-              label="Stock Value"
+              label={t('suppliers_stock_value')}
               value={`$${totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
               sub=""
               color="emerald"
               icon={DollarSign}
             />
-            <StatCard label="Out of Stock" value={totalOutOfStock} sub="across all suppliers" color="red" icon={AlertCircle} />
+            <StatCard label={t('suppliers_out_of_stock')} value={totalOutOfStock} sub={t('suppliers_across_all')} color="red" icon={AlertCircle} />
           </div>
         </div>
       )}
@@ -133,7 +134,7 @@ function SuppliersPageInner() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder="Search supplier..."
+            placeholder={t('suppliers_search')}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-pink-400 bg-white max-w-sm"
@@ -144,13 +145,13 @@ function SuppliersPageInner() {
         {!latestSnapshot && (
           <div className="text-center py-20">
             <Box size={48} className="mx-auto text-gray-300 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-500 mb-2">No inventory data</h3>
-            <p className="text-sm text-gray-400 mb-4">Import an inventory file to see your suppliers here.</p>
+            <h3 className="text-lg font-semibold text-gray-500 mb-2">{t('suppliers_no_data')}</h3>
+            <p className="text-sm text-gray-400 mb-4">{t('suppliers_import_first')}</p>
             <button
               onClick={() => router.push('/inventory-hub')}
               className="px-4 py-2 bg-pink-500 text-white rounded-xl text-sm font-medium hover:bg-pink-600 transition-colors"
             >
-              Go to Inventory Hub
+              {t('suppliers_go_hub')}
             </button>
           </div>
         )}
@@ -177,7 +178,7 @@ function SuppliersPageInner() {
                         <h3 className="font-bold text-gray-900 group-hover:text-pink-600 transition-colors">
                           {supplier.name}
                         </h3>
-                        <p className="text-xs text-gray-400">{supplier.productCount} products</p>
+                        <p className="text-xs text-gray-400">{supplier.productCount} {t('suppliers_products')}</p>
                       </div>
                     </div>
 
@@ -201,21 +202,21 @@ function SuppliersPageInner() {
                   {/* Stats grid */}
                   <div className="grid grid-cols-2 gap-2 mb-3">
                     <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Stock Units</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">{t('suppliers_stock_units')}</p>
                       <p className="font-bold text-gray-900">{supplier.totalStockUnits.toLocaleString()}</p>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Stock Value</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">{t('suppliers_stock_value')}</p>
                       <p className="font-bold text-gray-900">
                         ${supplier.totalStockValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                       </p>
                     </div>
                     <div className="bg-red-50 rounded-xl p-3">
-                      <p className="text-[10px] text-red-400 uppercase tracking-wide mb-1">Out of Stock</p>
+                      <p className="text-[10px] text-red-400 uppercase tracking-wide mb-1">{t('suppliers_oos')}</p>
                       <p className="font-bold text-red-600">{supplier.outOfStockCount}</p>
                     </div>
                     <div className="bg-orange-50 rounded-xl p-3">
-                      <p className="text-[10px] text-orange-400 uppercase tracking-wide mb-1">Low Stock</p>
+                      <p className="text-[10px] text-orange-400 uppercase tracking-wide mb-1">{t('suppliers_low')}</p>
                       <p className="font-bold text-orange-600">{supplier.lowStockCount}</p>
                     </div>
                   </div>
@@ -224,7 +225,7 @@ function SuppliersPageInner() {
                   {hasBehavior && behavior && (
                     <div className="pt-3 border-t border-gray-100">
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">Avg Behavior Score</span>
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">{t('suppliers_avg_score')}</span>
                         <span className="text-xs font-bold text-gray-700">{behavior.avgScore.toFixed(0)}/100</span>
                       </div>
                       <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">

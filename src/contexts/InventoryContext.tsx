@@ -36,7 +36,7 @@ interface InventoryContextType {
   deleteSnapshot: (snapshotId: string) => Promise<void>;
   clearAllData: () => Promise<void>;
   checkFileDuplicate: (fileHash: string) => Promise<boolean>;
-  updateTargetStock: (updates: Map<string, { stockObjetivo: number; piezas: number }>) => Promise<number>;
+  updateTargetStock: (updates: Map<string, { stockObjetivo: number; piezas: number; descripcion?: string; proveedor?: string }>) => Promise<number>;
 
   // Queries
   getProductHistory: (clave: string) => { date: Date; existencia: number }[];
@@ -278,7 +278,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   // ── updateTargetStock ──────────────────────────────────────────────────────
 
   const updateTargetStock = useCallback(async (
-    updates: Map<string, { stockObjetivo: number; piezas: number }>,
+    updates: Map<string, { stockObjetivo: number; piezas: number; descripcion?: string; proveedor?: string }>,
   ): Promise<number> => {
     const count = await inventoryDB.updateTargetStock(updates);
     await refreshData();

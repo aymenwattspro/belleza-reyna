@@ -614,14 +614,35 @@ class InventoryDBService {
   }
 
   // Update target stock / piezas directly (no new import entry created)
-  async updateTargetStock(updates: Map<string, { stockObjetivo: number; piezas: number }>): Promise<number> {
+  async updateTargetStock(updates: Map<string, { stockObjetivo: number; piezas: number; descripcion?: string; proveedor?: string }>): Promise<number> {
     if (!this.db) await this.init();
     let count = 0;
-    for (const [clave, { stockObjetivo, piezas }] of updates) {
+    for (const [clave, { stockObjetivo, piezas, descripcion, proveedor }] of updates) {
       const existing = await this.getFromStore('current_inventory', clave) as CurrentInventoryItem | undefined;
-      if (!existing) continue;
-      await this.putToStore('current_inventory', { ...existing, stockObjetivo, piezas });
-      count++;
+      if (existing) {
+        await this.putToStore('current_inventory', {
+          ...existing,
+          stockObjetivo,
+          piezas,
+          descripcion: descripcion || existing.descripcion,
+          proveedor: proveedor || existing.proveedor
+        });
+        count++;
+      } else {
+        await this.putToStore('current_inventory', {
+          clave,
+          descripcion: descripcion || clave,
+          proveedor: proveedor || 'General',
+          existencia: 0,
+          precioC: 0,
+          stockObjetivo,
+          piezas,
+          firstSeenDate: new Date().toISOString(),
+          lastUpdatedDate: new Date().toISOString(),
+          historyCount: 0,
+        } as CurrentInventoryItem);
+        count++;
+      }
     }
     return count;
   }
