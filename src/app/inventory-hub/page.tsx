@@ -65,12 +65,12 @@ function GuidedImportModal({ preview, supplierName, onConfirm, onCancel }: Guide
 
   useEffect(() => {
     if (importMode === 'targetstock') {
-      setMapping((prev) => ({
-        ...prev,
+      setMapping({
+        ...preview.mapping,
         existenciaIdx: -1,
         precioCIdx: -1,
         precioVIdx: -1,
-      }));
+      });
     } else {
       setMapping({
         ...preview.mapping,

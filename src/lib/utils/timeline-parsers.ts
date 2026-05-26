@@ -32,7 +32,18 @@ export interface ParsePreview {
 // --------------------------------------------------------------------------
 // Utility: normalise a string for header matching
 // --------------------------------------------------------------------------
-const norm = (s: string) => String(s ?? '').toLowerCase().trim();
+const norm = (s: string) => String(s ?? '').toLowerCase().trim().replace(/\s+/g, '_');
+
+/** First column whose normalized header matches any pattern (patterns tried in order). */
+function findByPatterns(h: string[], ...patternGroups: string[][]): number {
+  for (const patterns of patternGroups) {
+    const idx = h.findIndex((cell) =>
+      patterns.some((p) => cell === p || cell.includes(p)),
+    );
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
 
 // --------------------------------------------------------------------------
 // Auto-detect column indices from a header row
@@ -52,8 +63,21 @@ export function detectColumns(headerRow: string[]): Omit<ColMapping, 'headerRowI
   const precioCIdx = find('precio c', 'costo', 'cost', 'compra', 'p. costo');
   const precioVIdx = find('precio v', 'venta', 'sale', 'p. venta', 'precio s');
   const proveedorIdx = find('proveedor', 'supplier', 'marca', 'brand');
-  const stockObjetivoIdx = find('stock_objetivo', 'target', 'objetivo', 'minimo', 'mínimo', 'min');
-  const piezasIdx = find('piezas', 'pz', 'empaque', 'paquete', 'unidades', 'pieces', 'qty/case');
+  const stockObjetivoIdx = findByPatterns(
+    h,
+    ['stock_objetivo', 'stock-objetivo', 'stockobjetivo'],
+    ['target_stock', 'targetstock', 'target_stock_only'],
+    ['stock_target', 'stocktarget'],
+    ['objetivo', 'target'],
+    ['minimo', 'mínimo', 'min_stock', 'minstock'],
+  );
+  const piezasIdx = findByPatterns(
+    h,
+    ['piezas', 'pieza'],
+    ['unidades_por_caja', 'unidades_por_case', 'units_per_case', 'units/case'],
+    ['pz', 'pz/caja', 'pz_caja'],
+    ['empaque', 'paquete', 'pieces'],
+  );
 
   return {
     claveIdx,
