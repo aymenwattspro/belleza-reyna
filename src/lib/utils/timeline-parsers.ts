@@ -60,8 +60,25 @@ export function detectColumns(headerRow: string[]): Omit<ColMapping, 'headerRowI
     ((['existencia', 'stock', 'cantidad', 'qty'].some(p => cell.includes(p)) || cell.includes('exist')) &&
      !cell.includes('objetivo') && !cell.includes('target') && !cell.includes('parcial') && !cell.includes('acum'))
   );
-  const precioCIdx = find('precio c', 'costo', 'cost', 'compra', 'p. costo');
-  const precioVIdx = find('precio v', 'venta', 'sale', 'p. venta', 'precio s');
+  const precioCIdx = findByPatterns(
+    h,
+    ['precio_c', 'precio_c.', 'p._c', 'p_c', 'precioc', 'precio_costo'],
+    ['costo', 'cost', 'compra', 'p._costo'],
+  );
+  let precioVIdx = findByPatterns(
+    h,
+    ['precio_v', 'precio_v.', 'p._v', 'p_v', 'preciov', 'precio_venta'],
+    ['venta', 'sale', 'p._venta', 'precio_s'],
+  );
+  if (precioVIdx >= 0 && precioVIdx === precioCIdx) {
+    const rest = h.map((cell, i) => ({ cell, i })).slice(precioCIdx + 1);
+    const next = rest.find(({ cell }) =>
+      ['precio_v', 'precio_v.', 'p._v', 'p_v', 'preciov', 'precio_venta', 'venta', 'sale'].some(
+        (p) => cell === p || cell.includes(p),
+      ),
+    );
+    precioVIdx = next?.i ?? -1;
+  }
   const proveedorIdx = find('proveedor', 'supplier', 'marca', 'brand');
   const stockObjetivoIdx = findByPatterns(
     h,
