@@ -29,12 +29,20 @@ import {
 import { InventorySnapshot } from '@/lib/types/inventory-timeline';
 
 interface ColField { key: keyof ColMapping; labelKey: string; required?: boolean; }
-const COL_FIELDS: ColField[] = [
-  { key: 'claveIdx',         labelKey: 'import_col_ref',   required: true },
-  { key: 'descIdx',          labelKey: 'import_col_desc',        required: true },
-  { key: 'existenciaIdx',    labelKey: 'import_col_stock' },
-  { key: 'precioCIdx',       labelKey: 'import_col_cost' },
-  { key: 'precioVIdx',       labelKey: 'import_col_sale' },
+
+/** Inventory Snapshot: ref, description, stock, cost, sale only */
+const SNAPSHOT_COL_FIELDS: ColField[] = [
+  { key: 'claveIdx',      labelKey: 'import_col_ref',   required: true },
+  { key: 'descIdx',       labelKey: 'import_col_desc',  required: true },
+  { key: 'existenciaIdx', labelKey: 'import_col_stock' },
+  { key: 'precioCIdx',    labelKey: 'import_col_cost' },
+  { key: 'precioVIdx',    labelKey: 'import_col_sale' },
+];
+
+/** Target Stock Only: ref, description, target, units per case only */
+const TARGET_COL_FIELDS: ColField[] = [
+  { key: 'claveIdx',         labelKey: 'import_col_ref',    required: true },
+  { key: 'descIdx',          labelKey: 'import_col_desc',   required: true },
   { key: 'stockObjetivoIdx', labelKey: 'import_col_target' },
   { key: 'piezasIdx',        labelKey: 'import_col_units' },
 ];
@@ -57,12 +65,23 @@ function GuidedImportModal({ preview, supplierName, onConfirm, onCancel }: Guide
 
   useEffect(() => {
     if (importMode === 'targetstock') {
-      setMapping((prev) => ({ ...prev, existenciaIdx: -1 }));
+      setMapping((prev) => ({
+        ...prev,
+        existenciaIdx: -1,
+        precioCIdx: -1,
+        precioVIdx: -1,
+      }));
+    } else {
+      setMapping({
+        ...preview.mapping,
+        stockObjetivoIdx: -1,
+        piezasIdx: -1,
+      });
     }
-  }, [importMode]);
+  }, [importMode, preview.mapping]);
 
   const visibleColFields = useMemo(
-    () => (importMode === 'targetstock' ? COL_FIELDS.filter((f) => f.key !== 'existenciaIdx') : COL_FIELDS),
+    () => (importMode === 'targetstock' ? TARGET_COL_FIELDS : SNAPSHOT_COL_FIELDS),
     [importMode],
   );
 
@@ -161,12 +180,16 @@ function GuidedImportModal({ preview, supplierName, onConfirm, onCancel }: Guide
                       <th className="px-3 py-2 text-left font-semibold text-gray-600">{t('import_ref_sku')}</th>
                       <th className="px-3 py-2 text-left font-semibold text-gray-600">{t('orders_description')}</th>
                       {importMode === 'snapshot' ? (
-                        <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('inv_stock')}</th>
+                        <>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('inv_stock')}</th>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('import_col_cost')}</th>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('import_col_sale')}</th>
+                        </>
                       ) : (
-                        <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('import_col_target')}</th>
-                      )}
-                      {importMode === 'snapshot' && (
-                        <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('orders_unit_cost')}</th>
+                        <>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('import_col_target')}</th>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('import_col_units')}</th>
+                        </>
                       )}
                     </tr>
                   </thead>
@@ -176,12 +199,16 @@ function GuidedImportModal({ preview, supplierName, onConfirm, onCancel }: Guide
                         <td className="px-3 py-2 font-mono text-gray-700">{mapping.claveIdx >= 0 ? (row[mapping.claveIdx] || '—') : '—'}</td>
                         <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate">{mapping.descIdx >= 0 ? (row[mapping.descIdx] || '—') : '—'}</td>
                         {importMode === 'snapshot' ? (
-                          <td className="px-3 py-2 text-right font-medium text-gray-700">{mapping.existenciaIdx >= 0 ? (row[mapping.existenciaIdx] || '0') : '—'}</td>
+                          <>
+                            <td className="px-3 py-2 text-right font-medium text-gray-700">{mapping.existenciaIdx >= 0 ? (row[mapping.existenciaIdx] || '0') : '—'}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">{mapping.precioCIdx >= 0 ? (row[mapping.precioCIdx] || '—') : '—'}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">{mapping.precioVIdx >= 0 ? (row[mapping.precioVIdx] || '—') : '—'}</td>
+                          </>
                         ) : (
-                          <td className="px-3 py-2 text-right font-medium text-gray-700">{mapping.stockObjetivoIdx >= 0 ? (row[mapping.stockObjetivoIdx] || '—') : '—'}</td>
-                        )}
-                        {importMode === 'snapshot' && (
-                          <td className="px-3 py-2 text-right text-gray-600">{mapping.precioCIdx >= 0 ? (row[mapping.precioCIdx] || '—') : '—'}</td>
+                          <>
+                            <td className="px-3 py-2 text-right font-medium text-gray-700">{mapping.stockObjetivoIdx >= 0 ? (row[mapping.stockObjetivoIdx] || '—') : '—'}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">{mapping.piezasIdx >= 0 ? (row[mapping.piezasIdx] || '—') : '—'}</td>
+                          </>
                         )}
                       </tr>
                     ))}

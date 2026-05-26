@@ -606,14 +606,16 @@ export default function DashboardPage() {
               {/* ── Inventory Value ── */}
               {activeKpiModal === 'inventory_value' && (
                 <>
-                  <ExplainSection title="How it's calculated" color="violet">
-                    For every product in your current inventory: <code className="bg-gray-100 px-1 rounded text-xs">CURRENT STOCK × COST PRICE</code>. The results are summed across all products.
+                  <ExplainSection title={t('kpi_explain_calc')} color="violet">
+                    {t('kpi_inv_calc_intro')}{' '}
+                    <code className="bg-gray-100 px-1 rounded text-xs">{t('kpi_inv_calc_formula')}</code>.{' '}
+                    {t('kpi_inv_calc_sum')}
                   </ExplainSection>
-                  <ExplainSection title="What it means" color="violet">
-                    This is the estimated book value of your physical stock at cost — what you would have paid if you bought everything at once at current import prices.
+                  <ExplainSection title={t('kpi_explain_mean')} color="violet">
+                    {t('kpi_inv_mean')}
                   </ExplainSection>
-                  <ExplainSection title="How reliable is it?" color="amber">
-                    <strong>Moderate.</strong> Reliability depends on the accuracy of your imported cost prices. Products with a cost price of $0 are counted as zero value. If some suppliers haven't been imported with cost data, this number will be underestimated.
+                  <ExplainSection title={t('kpi_explain_reliable')} color="amber">
+                    <strong>{t('kpi_inv_reliable_label')}</strong> {t('kpi_inv_reliable')}
                   </ExplainSection>
                 </>
               )}
@@ -621,14 +623,15 @@ export default function DashboardPage() {
               {/* ── Pending Order ── */}
               {activeKpiModal === 'pending_order' && (
                 <>
-                  <ExplainSection title="How it's calculated" color="pink">
-                    <code className="bg-gray-100 px-1 rounded text-xs">Σ (units to order × unit cost)</code> for every product that is currently <strong>selected</strong> in your Total Order page. Deselected products are excluded.
+                  <ExplainSection title={t('kpi_explain_calc')} color="pink">
+                    <code className="bg-gray-100 px-1 rounded text-xs">{t('kpi_order_calc_formula')}</code>{' '}
+                    {t('kpi_order_calc_note')}
                   </ExplainSection>
-                  <ExplainSection title="What it means" color="pink">
-                    The total capital you would spend if you confirmed your current order as-is right now. This is a projection, not a committed expense.
+                  <ExplainSection title={t('kpi_explain_mean')} color="pink">
+                    {t('kpi_order_mean')}
                   </ExplainSection>
-                  <ExplainSection title="How reliable is it?" color="amber">
-                    <strong>High — for selected products.</strong> It reflects the exact formula used in the Total Order page. Unreliable if many products have no target stock set (they won't appear in the order at all), or if cost prices are missing.
+                  <ExplainSection title={t('kpi_explain_reliable')} color="amber">
+                    <strong>{t('kpi_order_reliable_label')}</strong> {t('kpi_order_reliable')}
                   </ExplainSection>
                 </>
               )}
@@ -636,19 +639,19 @@ export default function DashboardPage() {
               {/* ── Stock Alerts ── */}
               {activeKpiModal === 'stock_alerts' && (
                 <>
-                  <ExplainSection title="How it's calculated" color="red">
-                    Each product is scored against its target stock:
+                  <ExplainSection title={t('kpi_explain_calc')} color="red">
+                    {t('kpi_alert_calc_intro')}
                     <ul className="mt-1 space-y-0.5 list-disc list-inside text-xs">
-                      <li><span className="text-red-600 font-semibold">Red (Out)</span>: stock ≤ 20% of target, or stock = 0</li>
-                      <li><span className="text-orange-500 font-semibold">Orange (Low)</span>: stock between 20% and 70% of target</li>
-                      <li><span className="text-emerald-600 font-semibold">Green (OK)</span>: stock ≥ 70% of target</li>
+                      <li>{t('kpi_alert_red')}</li>
+                      <li>{t('kpi_alert_orange')}</li>
+                      <li>{t('kpi_alert_green')}</li>
                     </ul>
                   </ExplainSection>
-                  <ExplainSection title="What it means" color="red">
-                    The red number is your critical count — products with zero or near-zero stock that risk being missed by customers. Orange is your early-warning count.
+                  <ExplainSection title={t('kpi_explain_mean')} color="red">
+                    {t('kpi_alert_mean')}
                   </ExplainSection>
-                  <ExplainSection title="How reliable is it?" color="amber">
-                    <strong>Partial.</strong> Products without a target stock set default to "green" regardless of actual stock. Set targets for all products to get an accurate picture. The Stock Health section below shows the full breakdown.
+                  <ExplainSection title={t('kpi_explain_reliable')} color="amber">
+                    <strong>{t('kpi_alert_reliable_label')}</strong> {t('kpi_alert_reliable')}
                   </ExplainSection>
                 </>
               )}
@@ -656,14 +659,14 @@ export default function DashboardPage() {
               {/* ── Confirmed Orders ── */}
               {activeKpiModal === 'confirmed_orders' && (
                 <>
-                  <ExplainSection title="How it's calculated" color="emerald">
-                    Counts every order you have clicked "Confirm & Place Order" on, stored in your local Order History database.
+                  <ExplainSection title={t('kpi_explain_calc')} color="emerald">
+                    {t('kpi_confirmed_calc')}
                   </ExplainSection>
-                  <ExplainSection title="What it means" color="emerald">
-                    Simply how many purchase orders you have confirmed through this app. Each confirmed order is frozen in history with its exact product list, quantities and total value.
+                  <ExplainSection title={t('kpi_explain_mean')} color="emerald">
+                    {t('kpi_confirmed_mean')}
                   </ExplainSection>
-                  <ExplainSection title="How reliable is it?" color="emerald">
-                    <strong>High.</strong> This is a simple count of persisted records. It does not track external orders placed outside this system.
+                  <ExplainSection title={t('kpi_explain_reliable')} color="emerald">
+                    <strong>{t('kpi_confirmed_reliable_label')}</strong> {t('kpi_confirmed_reliable')}
                   </ExplainSection>
                 </>
               )}
@@ -671,17 +674,19 @@ export default function DashboardPage() {
               {/* ── SFI ── */}
               {activeKpiModal === 'sfi' && (
                 <>
-                  <ExplainSection title="How it's calculated" color="indigo">
-                    <code className="bg-gray-100 px-1 rounded text-xs">SFI = (Σ current stock) ÷ (Σ target stock) × 100</code><br />
-                    Only products with a target stock &gt; 0 are included. Products without a target are excluded from both numerator and denominator.
+                  <ExplainSection title={t('kpi_explain_calc')} color="indigo">
+                    <code className="bg-gray-100 px-1 rounded text-xs">{t('kpi_sfi_calc_formula')}</code><br />
+                    {t('kpi_sfi_calc_note')}
                   </ExplainSection>
-                  <ExplainSection title="What it means" color="indigo">
-                    100% = you have exactly as much stock as your targets require across all products.<br />
-                    &gt;100% = you are carrying more total stock than needed (potential overstock).<br />
-                    &lt;100% = your current stock falls short of your targets.
+                  <ExplainSection title={t('kpi_explain_mean')} color="indigo">
+                    {t('kpi_sfi_mean_100')}<br />
+                    {t('kpi_sfi_mean_over')}<br />
+                    {t('kpi_sfi_mean_under')}
                   </ExplainSection>
-                  <ExplainSection title="How reliable is it?" color="amber">
-                    <strong>Only as reliable as your targets.</strong> Currently tracking <strong>{advancedKPIs?.withTargetCount ?? 0}</strong> of <strong>{advancedKPIs?.totalProducts ?? 0}</strong> products. A high SFI can disguise individual product shortages if one supplier is overstocked and another is understocked.
+                  <ExplainSection title={t('kpi_explain_reliable')} color="amber">
+                    {t('kpi_sfi_reliable')
+                      .replace('{withTarget}', String(advancedKPIs?.withTargetCount ?? 0))
+                      .replace('{total}', String(advancedKPIs?.totalProducts ?? 0))}
                   </ExplainSection>
                 </>
               )}
@@ -689,15 +694,15 @@ export default function DashboardPage() {
               {/* ── OOS Rate ── */}
               {activeKpiModal === 'oos_rate' && (
                 <>
-                  <ExplainSection title="How it's calculated" color="orange">
-                    <code className="bg-gray-100 px-1 rounded text-xs">OOS Rate = (products with stock ≤ 0) ÷ (total products) × 100</code><br />
-                    Applies to all products in your current inventory, with or without a target.
+                  <ExplainSection title={t('kpi_explain_calc')} color="orange">
+                    <code className="bg-gray-100 px-1 rounded text-xs">{t('kpi_oos_calc_formula')}</code><br />
+                    {t('kpi_oos_calc_note')}
                   </ExplainSection>
-                  <ExplainSection title="What it means" color="orange">
-                    The percentage of your catalogue that is completely sold out. Even a small OOS rate (e.g. 5%) means dozens of products your customers cannot buy right now.
+                  <ExplainSection title={t('kpi_explain_mean')} color="orange">
+                    {t('kpi_oos_mean')}
                   </ExplainSection>
-                  <ExplainSection title="How reliable is it?" color="amber">
-                    <strong>High for the snapshot moment.</strong> This reflects your stock at the time of your last import. Physical stock received since the last import will not be reflected until you import again. Import frequently for an accurate picture.
+                  <ExplainSection title={t('kpi_explain_reliable')} color="amber">
+                    <strong>{t('kpi_oos_reliable_label')}</strong> {t('kpi_oos_reliable')}
                   </ExplainSection>
                 </>
               )}
@@ -705,16 +710,16 @@ export default function DashboardPage() {
               {/* ── Capital Gap ── */}
               {activeKpiModal === 'capital_gap' && (
                 <>
-                  <ExplainSection title="How it's calculated" color="indigo">
-                    For each product where <code className="bg-gray-100 px-1 rounded text-xs">current stock &lt; target stock</code>:<br />
-                    <code className="bg-gray-100 px-1 rounded text-xs">gap = (target - current) × cost price</code><br />
-                    Sum of all gaps across under-target products only.
+                  <ExplainSection title={t('kpi_explain_calc')} color="indigo">
+                    {t('kpi_gap_calc_intro')}<br />
+                    <code className="bg-gray-100 px-1 rounded text-xs">{t('kpi_gap_calc_formula')}</code><br />
+                    {t('kpi_gap_calc_sum')}
                   </ExplainSection>
-                  <ExplainSection title="What it means" color="indigo">
-                    The estimated capital investment needed to bring every under-stocked product back to its target level — in a single order. Think of it as the "maximum order budget" to achieve 100% SFI.
+                  <ExplainSection title={t('kpi_explain_mean')} color="indigo">
+                    {t('kpi_gap_mean')}
                   </ExplainSection>
-                  <ExplainSection title="How reliable is it?" color="amber">
-                    <strong>Moderate.</strong> Accurate targets and cost prices are required. Products without a target or cost are excluded. The number also doesn't account for case-size rounding (you may need to buy slightly more than the gap suggests due to pack sizes).
+                  <ExplainSection title={t('kpi_explain_reliable')} color="amber">
+                    <strong>{t('kpi_gap_reliable_label')}</strong> {t('kpi_gap_reliable')}
                   </ExplainSection>
                 </>
               )}
@@ -722,11 +727,11 @@ export default function DashboardPage() {
               {/* ── Overstock detailed list ── */}
               {activeKpiModal === 'overstock' && (
                 <>
-                  <ExplainSection title="How it's detected" color="amber">
-                    A product is flagged as overstock when <code className="bg-gray-100 px-1 rounded text-xs">current stock &gt; target stock</code> (target must be set &gt; 0). Ranked by the number of excess units (highest first).
+                  <ExplainSection title={t('kpi_explain_detected')} color="amber">
+                    {t('kpi_over_detect')}
                   </ExplainSection>
-                  <ExplainSection title="Why it matters" color="amber">
-                    Overstock ties up capital and shelf space. Review these products to decide whether to increase the target, run a promotion to clear stock, or simply not reorder them in the next cycle.
+                  <ExplainSection title={t('kpi_explain_why')} color="amber">
+                    {t('kpi_over_why')}
                   </ExplainSection>
 
                   {overstockProductsList.length === 0 ? (
