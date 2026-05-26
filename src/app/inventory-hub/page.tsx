@@ -28,15 +28,15 @@ import {
 } from '@/lib/utils/timeline-parsers';
 import { InventorySnapshot } from '@/lib/types/inventory-timeline';
 
-interface ColField { key: keyof ColMapping; label: string; required?: boolean; }
+interface ColField { key: keyof ColMapping; labelKey: keyof typeof import('@/contexts/LanguageContext')['LanguageContextType'] | any; required?: boolean; }
 const COL_FIELDS: ColField[] = [
-  { key: 'claveIdx',         label: 'Reference / SKU',   required: true },
-  { key: 'descIdx',          label: 'Description',        required: true },
-  { key: 'existenciaIdx',    label: 'Stock / Existencia' },
-  { key: 'precioCIdx',       label: 'Cost Price' },
-  { key: 'precioVIdx',       label: 'Sale Price' },
-  { key: 'stockObjetivoIdx', label: 'Target Stock' },
-  { key: 'piezasIdx',        label: 'Units per Case' },
+  { key: 'claveIdx',         labelKey: 'import_col_ref',   required: true },
+  { key: 'descIdx',          labelKey: 'import_col_desc',        required: true },
+  { key: 'existenciaIdx',    labelKey: 'import_col_stock' },
+  { key: 'precioCIdx',       labelKey: 'import_col_cost' },
+  { key: 'precioVIdx',       labelKey: 'import_col_sale' },
+  { key: 'stockObjetivoIdx', labelKey: 'import_col_target' },
+  { key: 'piezasIdx',        labelKey: 'import_col_units' },
 ];
 
 interface GuidedImportProps {
@@ -70,7 +70,7 @@ function GuidedImportModal({ preview, supplierName, onSupplierChange, onConfirm,
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
             <h2 className="text-lg font-bold text-gray-900">
-              {importType === 'targetstock' ? `🎯 ${t('hub_import_targets')}` : `📦 ${t('hub_import_inventory')}`}
+              📦 {t('hub_import_inventory')}
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">~{estimatedCount} {t('import_products_ready')}</p>
           </div>
@@ -92,11 +92,11 @@ function GuidedImportModal({ preview, supplierName, onSupplierChange, onConfirm,
                 <option value="Maybelline">Maybelline</option>
                 <option value="L'Oreal">L&apos;Oreal</option>
                 <option value="NYX">NYX</option>
-                <option value="__custom__">+ Add new supplier...</option>
+                <option value="__custom__">{t('import_add_new_supplier')}</option>
               </select>
               {localSupplier === '__custom__' && (
                 <input value={customSupplier} onChange={(e) => setCustomSupplier(e.target.value)}
-                  placeholder="Type supplier name"
+                  placeholder={t('import_type_supplier_name')}
                   className="flex-1 px-3 py-2 rounded-lg border border-pink-200 text-sm outline-none focus:border-pink-400" />
               )}
             </div>
@@ -104,16 +104,16 @@ function GuidedImportModal({ preview, supplierName, onSupplierChange, onConfirm,
 
           <div>
             <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">{t('import_col_mapping')}</label>
-            <p className="text-xs text-gray-400 mb-3">Detected headers: {preview.allHeaders.filter(Boolean).join(', ')}</p>
+            <p className="text-xs text-gray-400 mb-3">{t('import_detected_headers')}: {preview.allHeaders.filter(Boolean).join(', ')}</p>
             <div className="grid grid-cols-2 gap-3">
-              {COL_FIELDS.map(({ key, label, required }) => (
+              {COL_FIELDS.map(({ key, labelKey, required }) => (
                 <div key={key}>
-                  <label className="block text-xs text-gray-500 mb-1">{label}{required && <span className="text-red-500 ml-1">*</span>}</label>
+                  <label className="block text-xs text-gray-500 mb-1">{t(labelKey)}{required && <span className="text-red-500 ml-1">*</span>}</label>
                   <select value={(mapping as any)[key]} onChange={(e) => setField(key as keyof ColMapping, parseInt(e.target.value))}
                     className={cn('w-full px-2 py-1.5 rounded-lg border text-xs outline-none',
                       required && (mapping as any)[key] === -1 ? 'border-red-300 bg-red-50' : 'border-gray-200 focus:border-pink-400')}>
                     <option value={-1}>{t('import_not_mapped')}</option>
-                    {nonEmptyHeaders.map(({ h, i }) => <option key={i} value={i}>Col {i + 1}: {h}</option>)}
+                    {nonEmptyHeaders.map(({ h, i }) => <option key={i} value={i}>{t('import_col')} {i + 1}: {h}</option>)}
                   </select>
                 </div>
               ))}
@@ -127,7 +127,7 @@ function GuidedImportModal({ preview, supplierName, onSupplierChange, onConfirm,
                 <table className="text-xs w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold text-gray-600">Ref/SKU</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-600">{t('import_ref_sku')}</th>
                       <th className="px-3 py-2 text-left font-semibold text-gray-600">{t('orders_description')}</th>
                       <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('inv_stock')}</th>
                       <th className="px-3 py-2 text-right font-semibold text-gray-600">{t('orders_unit_cost')}</th>
@@ -180,7 +180,6 @@ export default function InventoryHubPage() {
   const { t } = useLanguage();
 
   const [preview, setPreview] = useState<ParsePreview | null>(null);
-  const [importType, setImportType] = useState<'inventory' | 'targetstock'>('inventory');
   const [pendingSupplier, setPendingSupplier] = useState('General');
   const [isImporting, setIsImporting] = useState(false);
   const inventoryInputRef = useRef<HTMLInputElement>(null);
@@ -275,8 +274,7 @@ export default function InventoryHubPage() {
     return behaviorProducts.filter((p) => p.clave.toLowerCase().includes(q) || p.descripcion.toLowerCase().includes(q) || p.proveedor.toLowerCase().includes(q));
   }, [behaviorProducts, behaviorSearch]);
 
-  const handleFileSelect = useCallback(async (file: File, type: 'inventory' | 'targetstock') => {
-    setImportType(type);
+  const handleFileSelect = useCallback(async (file: File) => {
     try {
       let prev: ParsePreview;
       if (file.name.endsWith('.csv')) { const text = await file.text(); prev = parseCSVToPreview(text, file.name); }
@@ -300,39 +298,38 @@ export default function InventoryHubPage() {
         fileName: `import_${new Date().toISOString().slice(0, 10)}`, supplierName: supplier, fileHash, products,
       };
       const result = await addSnapshot(snapshot, fileHash);
+
+      const targetUpdates = new Map();
+      products.forEach(p => {
+        if (p.stockObjetivo != null || p.piezas != null) {
+          targetUpdates.set(p.clave, { stockObjetivo: p.stockObjetivo ?? p.existencia, piezas: p.piezas ?? 1 });
+        }
+      });
+      if (targetUpdates.size > 0) {
+        await updateTargetStock(targetUpdates);
+      }
+
       const parts: string[] = [];
       if (result.newProducts > 0) parts.push(`${result.newProducts} new`);
       if (result.updatedProducts > 0) parts.push(`${result.updatedProducts} updated`);
       if (result.unchangedProducts > 0) parts.push(`${result.unchangedProducts} unchanged`);
       toast.success(`✅ ${parts.join(' · ')}`);
+      
+      if (targetUpdates.size > 0) {
+        toast.success(`🎯 Target stock updated for ${targetUpdates.size} products`);
+      }
       setPreview(null);
     } catch (e: any) { toast.error(e.message || 'Import failed'); }
     finally { setIsImporting(false); }
-  }, [preview, checkFileDuplicate, addSnapshot]);
-
-  const handleTargetStockImport = useCallback(async (mapping: ColMapping, supplier: string) => {
-    if (!preview || !latestSnapshot) return;
-    setIsImporting(true);
-    try {
-      const configProducts = applyMappingToRows(preview.rawRows, mapping, supplier);
-      const updates = new Map(
-        configProducts.filter(p => p.stockObjetivo != null || p.piezas != null)
-          .map(p => [p.clave, { stockObjetivo: p.stockObjetivo ?? p.existencia, piezas: p.piezas ?? 1 }])
-      );
-      const count = await updateTargetStock(updates);
-      toast.success(`🎯 Target stock updated for ${count} products`);
-      setPreview(null);
-    } catch (e: any) { toast.error(e.message || 'Target stock import failed'); }
-    finally { setIsImporting(false); }
-  }, [preview, latestSnapshot, updateTargetStock]);
+  }, [preview, checkFileDuplicate, addSnapshot, updateTargetStock]);
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {preview && (
         <GuidedImportModal
           preview={preview} supplierName={pendingSupplier} onSupplierChange={setPendingSupplier}
-          onConfirm={importType === 'targetstock' ? handleTargetStockImport : handleConfirmImport}
-          onCancel={() => setPreview(null)} importType={importType}
+          onConfirm={handleConfirmImport}
+          onCancel={() => setPreview(null)} importType="inventory"
         />
       )}
 
@@ -360,10 +357,6 @@ export default function InventoryHubPage() {
                 >
                   <Trash2 size={13} /> {t('hub_reset_data')}
                 </button>
-                <button onClick={() => targetInputRef.current?.click()}
-                  className="flex items-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm font-medium rounded-xl hover:bg-indigo-100 transition-colors">
-                  <Target size={14} /> {t('hub_import_targets')}
-                </button>
               </>
             )}
             <button onClick={() => inventoryInputRef.current?.click()}
@@ -375,9 +368,7 @@ export default function InventoryHubPage() {
       </div>
 
       <input ref={inventoryInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f, 'inventory'); e.target.value = ''; }} />
-      <input ref={targetInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f, 'targetstock'); e.target.value = ''; }} />
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ''; }} />
 
       {/* Import Timeline */}
       {snapshots.length > 0 && (
