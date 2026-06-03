@@ -97,6 +97,15 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     [excludedProducts]
   );
 
+  // Fast lookup set of claves that currently live inside a pending (draft)
+  // order. These products are hidden from the live Total Order list until the
+  // pending order is deleted or confirmed.
+  const draftClaves = useMemo(
+    () => new Set(draftOrders.flatMap((d) => d.items.map((i) => i.clave))),
+    [draftOrders]
+  );
+
+
   // Remember the inputs of the last snapshot build so exclude/include actions
   // can recompute the live order without requiring a fresh import.
   const lastBuildRef = useRef<{
@@ -179,7 +188,13 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         // after a fresh dataset import.
         if (excludedClaves.has(p.clave)) continue;
 
+        // 🕓 Skip products already placed into a pending (draft) order — they
+        // are hidden from the live Total Order list until the pending order is
+        // deleted or confirmed.
+        if (draftClaves.has(p.clave)) continue;
+
         const settings = settingsMap?.get(p.clave);
+
 
         const stockObjetivo = (settings?.minStockUnits && settings.minStockUnits > 0)
           ? settings.minStockUnits
@@ -217,8 +232,9 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
       setOrderLines(lines);
     },
-    [deselectedClaves, excludedClaves]
+    [deselectedClaves, excludedClaves, draftClaves]
   );
+
 
   /**
    * Recompute the live order from the last snapshot inputs, applying the
@@ -226,7 +242,8 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
    * the order updates even when the import page is not mounted.
    */
   const rebuildFromLastInputs = useCallback(
-    (excludedSet: Set<string>, deselectedSet: Set<string>) => {
+    (excludedSet: Set<string>, deselectedSet: Set<string>, draftSet: Set<string> = new Set<string>()) => {
+
       const ref = lastBuildRef.current;
       if (!ref) return;
 
@@ -242,6 +259,8 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
       for (const p of ref.products) {
         if (confirmedSet.has(p.clave)) continue;
         if (excludedSet.has(p.clave)) continue; // honour "Do Not Order"
+        if (draftSet.has(p.clave)) continue;    // hide products in pending orders
+
 
         const settings = ref.settingsMap?.get(p.clave);
         const stockObjetivo = (settings?.minStockUnits && settings.minStockUnits > 0)
@@ -323,17 +342,19 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         nextExcluded.delete(clave);
         setExcludedProducts((prev) => prev.filter((p) => p.clave !== clave));
         // Rebuild so the product reappears in the order if still below target
-        rebuildFromLastInputs(nextExcluded, deselectedClaves);
+        rebuildFromLastInputs(nextExcluded, deselectedClaves, draftClaves);
         toast.success('Ordering re-enabled');
+
       } catch (e) {
         console.error(e);
         toast.error('Error re-enabling product');
       }
     },
-    [excludedClaves, deselectedClaves, rebuildFromLastInputs]
+    [excludedClaves, deselectedClaves, draftClaves, rebuildFromLastInputs]
   );
 
   const toggleDeselect = useCallback(
+
 
     async (clave: string) => {
       try {
@@ -535,7 +556,14 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
         await ordersDB.saveDraftOrder(draft);
         await refreshDrafts();
+
+        // Hide the products that were moved into this pending order from the
+        // live Total Order list right away.
+        const savedClaves = new Set(items.map((i) => i.clave));
+        setOrderLines((prev) => prev.filter((l) => !savedClaves.has(l.clave)));
+
         return id;
+
       } catch (e) {
         console.error(e);
         toast.error('Error saving draft');
@@ -551,26 +579,38 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
       try {
         const next = recomputeDraft(draft);
         await ordersDB.saveDraftOrder(next);
-        await refreshDrafts();
+        // Refresh drafts and rebuild the live order: products added to the
+        // pending order disappear, products removed from it reappear (if still
+        // below target stock).
+        const drafts = await ordersDB.getDraftOrders();
+        setDraftOrders(drafts);
+        const allDraftClaves = new Set(drafts.flatMap((d) => d.items.map((i) => i.clave)));
+        rebuildFromLastInputs(excludedClaves, deselectedClaves, allDraftClaves);
       } catch (e) {
         console.error(e);
         toast.error('Error saving changes');
       }
     },
-    [refreshDrafts]
+    [excludedClaves, deselectedClaves, rebuildFromLastInputs]
   );
 
   const deleteDraft = useCallback(
     async (id: string) => {
       try {
         await ordersDB.deleteDraftOrder(id);
-        await refreshDrafts();
+        // Refresh drafts and rebuild so the freed products reappear in the
+        // live Total Order list (if they are still below target stock).
+        const drafts = await ordersDB.getDraftOrders();
+        setDraftOrders(drafts);
+        const remaining = new Set(drafts.flatMap((d) => d.items.map((i) => i.clave)));
+        rebuildFromLastInputs(excludedClaves, deselectedClaves, remaining);
       } catch (e) {
         toast.error('Error deleting draft');
       }
     },
-    [refreshDrafts]
+    [excludedClaves, deselectedClaves, rebuildFromLastInputs]
   );
+
 
   /**
    * Confirm a draft: it becomes a real ConfirmedOrder (counted in dashboards /

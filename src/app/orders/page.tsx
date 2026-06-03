@@ -311,7 +311,49 @@ function OrdersPageInner() {
         </div>
       </div>
 
+      {/* ── Do Not Order list (permanently excluded products) ──
+          Shown at the TOP of the page so the status of excluded products is
+          always visible without scrolling to the bottom.
+      ────────────────────────────────────────────────────────────────────── */}
+      {excludedProducts.length > 0 && (
+        <div className="mx-6 mt-4 rounded-2xl border border-red-100 bg-red-50/40 overflow-hidden">
+          <button
+            onClick={() => setExcludedOpen((v) => !v)}
+            className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-red-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Ban size={15} className="text-red-500" />
+              <span className="text-sm font-semibold text-red-700">{t('orders_excluded_title')}</span>
+              <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">
+                {excludedProducts.length}
+              </span>
+              <span className="hidden sm:inline text-xs text-red-400">— {t('orders_excluded_subtitle')}</span>
+            </div>
+            {excludedOpen ? <ChevronUp size={14} className="text-red-400" /> : <ChevronDown size={14} className="text-red-400" />}
+          </button>
+          {excludedOpen && (
+            <div className="px-5 pb-4 space-y-2">
+              {excludedProducts.map((p) => (
+                <div key={p.clave} className="flex items-center justify-between bg-white rounded-xl border border-red-100 px-4 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{p.descripcion}</p>
+                    <p className="text-[11px] text-gray-400 font-mono">{p.clave} · {p.proveedor}</p>
+                  </div>
+                  <button
+                    onClick={() => includeProduct(p.clave)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors shrink-0"
+                  >
+                    <RotateCcw size={13} /> {t('orders_reenable')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Priority Recommendation Banner ──────────────────────────────────
+
           Shows the top products from the current order ranked by popularity.
           This is a SUGGESTION only — no product is forced in or out.
       ────────────────────────────────────────────────────────────────────── */}
@@ -490,45 +532,8 @@ function OrdersPageInner() {
         </div>
       )}
 
-      {/* ── Do Not Order list (permanently excluded products) ── */}
-      {excludedProducts.length > 0 && (
-        <div className="mx-6 my-6 rounded-2xl border border-red-100 bg-red-50/40 overflow-hidden">
-          <button
-            onClick={() => setExcludedOpen((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-red-50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Ban size={15} className="text-red-500" />
-              <span className="text-sm font-semibold text-red-700">{t('orders_excluded_title')}</span>
-              <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">
-                {excludedProducts.length}
-              </span>
-              <span className="hidden sm:inline text-xs text-red-400">— {t('orders_excluded_subtitle')}</span>
-            </div>
-            {excludedOpen ? <ChevronUp size={14} className="text-red-400" /> : <ChevronDown size={14} className="text-red-400" />}
-          </button>
-          {excludedOpen && (
-            <div className="px-5 pb-4 space-y-2">
-              {excludedProducts.map((p) => (
-                <div key={p.clave} className="flex items-center justify-between bg-white rounded-xl border border-red-100 px-4 py-2.5">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{p.descripcion}</p>
-                    <p className="text-[11px] text-gray-400 font-mono">{p.clave} · {p.proveedor}</p>
-                  </div>
-                  <button
-                    onClick={() => includeProduct(p.clave)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors shrink-0"
-                  >
-                    <RotateCcw size={13} /> {t('orders_reenable')}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── Confirm Modal ── */}
+
 
       {confirmModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
