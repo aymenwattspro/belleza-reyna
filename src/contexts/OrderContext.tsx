@@ -72,7 +72,9 @@ interface OrderContextType {
   refreshDrafts: () => Promise<void>;
   getDraft: (id: string) => Promise<DraftOrder | null>;
   saveDraftFromLines: (lines: OrderLineItem[], name?: string) => Promise<string | null>;
+  addLinesToDraft: (draftId: string, lines: OrderLineItem[]) => Promise<boolean>;
   updateDraft: (draft: DraftOrder) => Promise<void>;
+
   deleteDraft: (id: string) => Promise<void>;
   confirmDraft: (draft: DraftOrder) => Promise<void>;
 }
@@ -545,8 +547,9 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
         const draft: DraftOrder = {
           id,
-          name: name?.trim() || `Draft · ${new Date().toLocaleString()}`,
+          name: name?.trim() || `Pending Order · ${new Date().toLocaleString()}`,
           supplierName,
+
           createdAt: now,
           updatedAt: now,
           totalProducts: items.length,
@@ -573,8 +576,71 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     [refreshDrafts]
   );
 
+  /**
+   * Add the given order lines to an EXISTING pending order. Products already in
+   * the pending order are skipped (no duplicates). The pending order totals are
+   * recomputed and the added products are hidden from the live Total Order list.
+   */
+  const addLinesToDraft = useCallback(
+    async (draftId: string, lines: OrderLineItem[]): Promise<boolean> => {
+      if (lines.length === 0) {
+        toast.error('Nothing to add — select at least one product');
+        return false;
+      }
+      try {
+        const existing = await ordersDB.getDraftOrder(draftId);
+        if (!existing) {
+          toast.error('Pending order not found');
+          return false;
+        }
+
+        const existingClaves = new Set(existing.items.map((i) => i.clave));
+        const newItems: DraftOrderItem[] = lines
+          .filter((l) => !existingClaves.has(l.clave))
+          .map((l) => ({
+            clave: l.clave,
+            descripcion: l.descripcion,
+            proveedor: l.proveedor,
+            currentStock: l.currentStock,
+            unitsToOrder: l.unitsToOrder,
+            unitCost: l.unitCost,
+            lineTotal: l.lineTotal,
+          }));
+
+        const mergedItems = [...existing.items, ...newItems];
+        const supplierSet = new Set(mergedItems.map((i) => i.proveedor));
+        const supplierName = supplierSet.size === 1 ? Array.from(supplierSet)[0] : 'Mixed';
+
+        const updated: DraftOrder = {
+          ...existing,
+          supplierName,
+          updatedAt: new Date().toISOString(),
+          totalProducts: mergedItems.length,
+          totalValue: mergedItems.reduce((s, i) => s + i.lineTotal, 0),
+          items: mergedItems,
+        };
+
+        await ordersDB.saveDraftOrder(updated);
+        await refreshDrafts();
+
+        // Hide the products that were moved into this pending order from the
+        // live Total Order list right away.
+        const addedClaves = new Set(lines.map((l) => l.clave));
+        setOrderLines((prev) => prev.filter((l) => !addedClaves.has(l.clave)));
+
+        return true;
+      } catch (e) {
+        console.error(e);
+        toast.error('Error adding to pending order');
+        return false;
+      }
+    },
+    [refreshDrafts]
+  );
+
   /** Persist edits to an existing draft (quantities, added/removed products, name…). */
   const updateDraft = useCallback(
+
     async (draft: DraftOrder) => {
       try {
         const next = recomputeDraft(draft);
@@ -695,7 +761,9 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         refreshDrafts,
         getDraft,
         saveDraftFromLines,
+        addLinesToDraft,
         updateDraft,
+
         deleteDraft,
         confirmDraft,
       }}

@@ -28,9 +28,10 @@ function OrdersPageInner() {
   // Calling it again here (without settingsMap) produces a different count.
   const {
     orderLines, deselectedClaves, toggleDeselect, batchToggleSelect, confirmOrder,
-    saveDraftFromLines, loading,
+    saveDraftFromLines, addLinesToDraft, draftOrders, loading,
     excludedProducts, excludeProduct, includeProduct,
   } = useOrder();
+
 
   const { latestSnapshot, loading: invLoading, popularityScores } = useInventory();
   const { t } = useLanguage();
@@ -39,6 +40,9 @@ function OrdersPageInner() {
   const [confirmModal, setConfirmModal] = useState(false);
   const [draftModal, setDraftModal] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const [draftMode, setDraftMode] = useState<'new' | 'existing'>('new');
+  const [selectedDraftId, setSelectedDraftId] = useState<string>('');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [recOpen, setRecOpen] = useState(true); // recommendation panel open/collapsed
   const [excludedOpen, setExcludedOpen] = useState(false); // "Do Not Order" panel
@@ -170,9 +174,24 @@ function OrdersPageInner() {
     setConfirmModal(false);
   };
 
-  // ── Save as Draft (pending order) ─────────────────────────────────────────
+  // ── Save as / Add to Pending Order ────────────────────────────────────────
   const handleSaveDraft = async () => {
     const selectedLines = orderLines.filter((l) => l.selected);
+
+    // Add the selected products to an EXISTING pending order
+    if (draftMode === 'existing') {
+      if (!selectedDraftId) { toast.error(t('draft_select_one')); return; }
+      const ok = await addLinesToDraft(selectedDraftId, selectedLines);
+      if (ok) {
+        setDraftModal(false);
+        setSelectedDraftId('');
+        toast.success(t('draft_added_to'));
+        router.push('/draft-orders');
+      }
+      return;
+    }
+
+    // Create a brand-new pending order
     const id = await saveDraftFromLines(selectedLines, draftName);
     if (id) {
       setDraftModal(false);
@@ -181,6 +200,7 @@ function OrdersPageInner() {
       router.push('/draft-orders');
     }
   };
+
 
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -227,8 +247,9 @@ function OrdersPageInner() {
               <FileText size={15} className="text-red-500" /> PDF
             </button>
             <button
-              onClick={() => { setDraftName(''); setDraftModal(true); }}
+              onClick={() => { setDraftName(''); setSelectedDraftId(''); setDraftMode('new'); setDraftModal(true); }}
               disabled={selected.length === 0}
+
               className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 disabled:opacity-40 transition-colors"
             >
               <FileText size={15} className="text-amber-500" /> {t('orders_save_draft')}
@@ -602,16 +623,58 @@ function OrdersPageInner() {
               </div>
             </div>
 
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">{t('draft_name')}</label>
-              <input
-                autoFocus
-                value={draftName}
-                onChange={(e) => setDraftName(e.target.value)}
-                placeholder={t('draft_name_placeholder')}
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-amber-400"
-              />
-            </div>
+            {/* Mode toggle — only relevant when at least one pending order exists */}
+            {draftOrders.length > 0 && (
+              <div className="flex gap-1 mb-4 p-1 bg-gray-100 rounded-xl">
+                <button
+                  onClick={() => setDraftMode('new')}
+                  className={cn(
+                    'flex-1 py-2 text-xs font-semibold rounded-lg transition-colors',
+                    draftMode === 'new' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  {t('draft_mode_new')}
+                </button>
+                <button
+                  onClick={() => setDraftMode('existing')}
+                  className={cn(
+                    'flex-1 py-2 text-xs font-semibold rounded-lg transition-colors',
+                    draftMode === 'existing' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  {t('draft_mode_existing')}
+                </button>
+              </div>
+            )}
+
+            {draftMode === 'existing' ? (
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">{t('draft_select_existing')}</label>
+                <select
+                  autoFocus
+                  value={selectedDraftId}
+                  onChange={(e) => setSelectedDraftId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-amber-400 bg-white"
+                >
+                  <option value="">— {t('draft_select_existing')} —</option>
+                  {draftOrders.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name} · {d.totalProducts} {t('draft_products')}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">{t('draft_name')}</label>
+                <input
+                  autoFocus
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  placeholder={t('draft_name_placeholder')}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-amber-400"
+                />
+              </div>
+            )}
+
 
             <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-2">
               <div className="flex justify-between text-sm">
@@ -637,11 +700,12 @@ function OrdersPageInner() {
               </button>
               <button
                 onClick={handleSaveDraft}
-                disabled={totals.count === 0}
+                disabled={totals.count === 0 || (draftMode === 'existing' && !selectedDraftId)}
                 className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl hover:from-amber-600 hover:to-orange-600 disabled:opacity-50"
               >
-                {t('draft_save')}
+                {draftMode === 'existing' ? t('draft_add_to_existing') : t('draft_save')}
               </button>
+
             </div>
           </div>
         </div>
