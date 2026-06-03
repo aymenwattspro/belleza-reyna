@@ -7,10 +7,11 @@ import React, {
   useCallback,
   useEffect,
 } from 'react';
-import { ordersDB, ConfirmedOrder, OrderItem } from '@/lib/db/orders-db';
+import { ordersDB, ConfirmedOrder, OrderItem, DraftOrder, DraftOrderItem } from '@/lib/db/orders-db';
 import { adjustOrder } from '@/lib/utils/adjust-order';
 import { ProductSnapshot } from '@/lib/types/inventory-timeline';
 import { toast } from 'sonner';
+
 
 export interface OrderLineItem {
   clave: string;
@@ -34,6 +35,9 @@ interface OrderContextType {
   // Confirmed order history
   confirmedOrders: ConfirmedOrder[];
 
+  // Draft / pending orders (do NOT affect dashboards until confirmed)
+  draftOrders: DraftOrder[];
+
   // Loading
   loading: boolean;
 
@@ -48,7 +52,16 @@ interface OrderContextType {
   confirmOrder: (selectedLines: OrderLineItem[]) => Promise<void>;
   deleteConfirmedOrder: (orderId: string) => Promise<void>;
   refreshHistory: () => Promise<void>;
+
+  // Draft actions
+  refreshDrafts: () => Promise<void>;
+  getDraft: (id: string) => Promise<DraftOrder | null>;
+  saveDraftFromLines: (lines: OrderLineItem[], name?: string) => Promise<string | null>;
+  updateDraft: (draft: DraftOrder) => Promise<void>;
+  deleteDraft: (id: string) => Promise<void>;
+  confirmDraft: (draft: DraftOrder) => Promise<void>;
 }
+
 
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
@@ -59,9 +72,10 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
   const [orderLines, setOrderLines] = useState<OrderLineItem[]>([]);
   const [deselectedClaves, setDeselectedClaves] = useState<Set<string>>(new Set());
   const [confirmedOrders, setConfirmedOrders] = useState<ConfirmedOrder[]>([]);
+  const [draftOrders, setDraftOrders] = useState<DraftOrder[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Load deselected products and history on mount
+  // Load deselected products, history and drafts on mount
   useEffect(() => {
     const load = async () => {
       try {
@@ -70,12 +84,15 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         setDeselectedClaves(new Set(claves));
         const history = await ordersDB.getConfirmedOrders();
         setConfirmedOrders(history);
+        const drafts = await ordersDB.getDraftOrders();
+        setDraftOrders(drafts);
       } catch (e) {
         console.error('OrderContext init error:', e);
       }
     };
     load();
   }, []);
+
 
   /**
    * Build order lines from the latest inventory snapshot.
@@ -295,12 +312,176 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     setConfirmedOrders(history);
   }, []);
 
+  // ─── Draft / Pending Orders ────────────────────────────────────────────────
+
+  const refreshDrafts = useCallback(async () => {
+    const drafts = await ordersDB.getDraftOrders();
+    setDraftOrders(drafts);
+  }, []);
+
+  const getDraft = useCallback(async (id: string) => {
+    return ordersDB.getDraftOrder(id);
+  }, []);
+
+  /** Recompute totals + updatedAt for a draft's items. */
+  const recomputeDraft = (draft: DraftOrder): DraftOrder => {
+    const totalValue = draft.items.reduce((s, i) => s + i.lineTotal, 0);
+    return {
+      ...draft,
+      totalProducts: draft.items.length,
+      totalValue,
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
+  /**
+   * Create a NEW draft order from the currently selected order lines.
+   * Returns the new draft id (or null when there is nothing to save).
+   * Drafts are kept fully separate from confirmed orders — they never
+   * affect dashboards, metrics or history until confirmed.
+   */
+  const saveDraftFromLines = useCallback(
+    async (lines: OrderLineItem[], name?: string): Promise<string | null> => {
+      if (lines.length === 0) {
+        toast.error('Nothing to save — select at least one product');
+        return null;
+      }
+      try {
+        const id = `draft_${Date.now()}`;
+        const now = new Date().toISOString();
+        const items: DraftOrderItem[] = lines.map((l) => ({
+          clave: l.clave,
+          descripcion: l.descripcion,
+          proveedor: l.proveedor,
+          currentStock: l.currentStock,
+          unitsToOrder: l.unitsToOrder,
+          unitCost: l.unitCost,
+          lineTotal: l.lineTotal,
+        }));
+
+        // Derive supplier label
+        const supplierSet = new Set(items.map((i) => i.proveedor));
+        const supplierName =
+          supplierSet.size === 1 ? Array.from(supplierSet)[0] : 'Mixed';
+
+        const draft: DraftOrder = {
+          id,
+          name: name?.trim() || `Draft · ${new Date().toLocaleString()}`,
+          supplierName,
+          createdAt: now,
+          updatedAt: now,
+          totalProducts: items.length,
+          totalValue: items.reduce((s, i) => s + i.lineTotal, 0),
+          items,
+        };
+
+        await ordersDB.saveDraftOrder(draft);
+        await refreshDrafts();
+        return id;
+      } catch (e) {
+        console.error(e);
+        toast.error('Error saving draft');
+        return null;
+      }
+    },
+    [refreshDrafts]
+  );
+
+  /** Persist edits to an existing draft (quantities, added/removed products, name…). */
+  const updateDraft = useCallback(
+    async (draft: DraftOrder) => {
+      try {
+        const next = recomputeDraft(draft);
+        await ordersDB.saveDraftOrder(next);
+        await refreshDrafts();
+      } catch (e) {
+        console.error(e);
+        toast.error('Error saving changes');
+      }
+    },
+    [refreshDrafts]
+  );
+
+  const deleteDraft = useCallback(
+    async (id: string) => {
+      try {
+        await ordersDB.deleteDraftOrder(id);
+        await refreshDrafts();
+      } catch (e) {
+        toast.error('Error deleting draft');
+      }
+    },
+    [refreshDrafts]
+  );
+
+  /**
+   * Confirm a draft: it becomes a real ConfirmedOrder (counted in dashboards /
+   * history) and the draft is removed from the pending list.
+   */
+  const confirmDraft = useCallback(
+    async (draft: DraftOrder) => {
+      if (draft.items.length === 0) {
+        toast.error('Cannot confirm an empty draft');
+        return;
+      }
+      setLoading(true);
+      try {
+        const orderId = `ord_${Date.now()}`;
+        const totalValue = draft.items.reduce((s, i) => s + i.lineTotal, 0);
+
+        const confirmed: ConfirmedOrder = {
+          id: orderId,
+          confirmedAt: new Date().toISOString(),
+          supplierName: draft.supplierName || 'Mixed',
+          totalProducts: draft.items.length,
+          totalValue,
+          items: draft.items.map((i) => ({
+            orderId,
+            clave: i.clave,
+            descripcion: i.descripcion,
+            proveedor: i.proveedor,
+            currentStock: i.currentStock,
+            unitsToOrder: i.unitsToOrder,
+            unitCost: i.unitCost,
+            lineTotal: i.lineTotal,
+          })),
+        };
+
+        await ordersDB.saveConfirmedOrder(confirmed);
+        await ordersDB.deleteDraftOrder(draft.id);
+
+        // Mark these products as confirmed so they drop out of the live order
+        const confirmedClaves = new Set(draft.items.map((i) => i.clave));
+        try {
+          const raw = localStorage.getItem(CONFIRMED_KEY);
+          const existing: string[] = raw ? JSON.parse(raw) : [];
+          const merged = Array.from(new Set([...existing, ...Array.from(confirmedClaves)]));
+          localStorage.setItem(CONFIRMED_KEY, JSON.stringify(merged));
+        } catch {}
+        setOrderLines((prev) => prev.filter((l) => !confirmedClaves.has(l.clave)));
+
+        await refreshDrafts();
+        const history = await ordersDB.getConfirmedOrders();
+        setConfirmedOrders(history);
+
+        toast.success(`Order confirmed! ${draft.items.length} products · $${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+      } catch (e) {
+        console.error(e);
+        toast.error('Error confirming draft');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [refreshDrafts]
+  );
+
   return (
     <OrderContext.Provider
       value={{
         orderLines,
         deselectedClaves,
         confirmedOrders,
+        draftOrders,
         loading,
         buildOrderFromSnapshot,
         toggleDeselect,
@@ -308,12 +489,19 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         confirmOrder,
         deleteConfirmedOrder,
         refreshHistory,
+        refreshDrafts,
+        getDraft,
+        saveDraftFromLines,
+        updateDraft,
+        deleteDraft,
+        confirmDraft,
       }}
     >
       {children}
     </OrderContext.Provider>
   );
 }
+
 
 export function useOrder() {
   const ctx = useContext(OrderContext);

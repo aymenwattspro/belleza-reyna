@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ShoppingCart, CheckSquare, Square, CheckCircle2,
   FileSpreadsheet, FileText, Package, Building2, Search, X, Star, Zap, ChevronDown, ChevronUp,
@@ -11,6 +12,7 @@ import { toast } from 'sonner';
 import { useOrder, OrderLineItem } from '@/contexts/OrderContext';
 import { useInventory } from '@/contexts/InventoryContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -22,13 +24,17 @@ function OrdersPageInner() {
   // ⚠️ DO NOT call buildOrderFromSnapshot here — the inventory hub page is the
   // single source of truth. It rebuilds the order whenever latestSnapshot changes.
   // Calling it again here (without settingsMap) produces a different count.
-  const { orderLines, deselectedClaves, toggleDeselect, batchToggleSelect, confirmOrder, loading } = useOrder();
+  const { orderLines, deselectedClaves, toggleDeselect, batchToggleSelect, confirmOrder, saveDraftFromLines, loading } = useOrder();
   const { latestSnapshot, loading: invLoading, popularityScores } = useInventory();
   const { t } = useLanguage();
+  const router = useRouter();
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
   const [confirmModal, setConfirmModal] = useState(false);
+  const [draftModal, setDraftModal] = useState(false);
+  const [draftName, setDraftName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [recOpen, setRecOpen] = useState(true); // recommendation panel open/collapsed
+
 
   // Build a fast clave → popularityScore map for sorting
   const popularityMap = useMemo(() => {
@@ -155,6 +161,19 @@ function OrdersPageInner() {
     setConfirmModal(false);
   };
 
+  // ── Save as Draft (pending order) ─────────────────────────────────────────
+  const handleSaveDraft = async () => {
+    const selectedLines = orderLines.filter((l) => l.selected);
+    const id = await saveDraftFromLines(selectedLines, draftName);
+    if (id) {
+      setDraftModal(false);
+      setDraftName('');
+      toast.success(t('draft_saved'));
+      router.push('/draft-orders');
+    }
+  };
+
+
   // ─────────────────────────────────────────────────────────────────────────
   if (invLoading) {
     return (
@@ -199,6 +218,13 @@ function OrdersPageInner() {
               <FileText size={15} className="text-red-500" /> PDF
             </button>
             <button
+              onClick={() => { setDraftName(''); setDraftModal(true); }}
+              disabled={selected.length === 0}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 disabled:opacity-40 transition-colors"
+            >
+              <FileText size={15} className="text-amber-500" /> {t('orders_save_draft')}
+            </button>
+            <button
               onClick={() => setConfirmModal(true)}
               disabled={selected.length === 0 || loading}
               className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-pink-500 to-pink-600 rounded-xl hover:from-pink-600 hover:to-pink-700 disabled:opacity-40 shadow-lg shadow-pink-500/25 transition-all"
@@ -208,6 +234,7 @@ function OrdersPageInner() {
           </div>
         </div>
       </div>
+
 
       {/* ── Key Metrics (prominent, always visible) ── */}
       <div className="bg-white border-b border-gray-100 px-6 py-5">
@@ -492,9 +519,69 @@ function OrdersPageInner() {
           </div>
         </div>
       )}
+
+      {/* ── Save as Draft Modal ── */}
+      {draftModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDraftModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                <FileText size={24} className="text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">{t('draft_save_name_modal')}</h3>
+                <p className="text-sm text-gray-500">{t('draft_save_name_hint')}</p>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">{t('draft_name')}</label>
+              <input
+                autoFocus
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                placeholder={t('draft_name_placeholder')}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">{t('draft_products')}</span>
+                <span className="font-bold text-gray-800">{totals.count}</span>
+              </div>
+              <div className="flex justify-between text-sm border-t border-gray-200 pt-2">
+                <span className="text-gray-700 font-medium">{t('draft_total')}</span>
+                <span className="font-bold text-emerald-700 text-base">
+                  ${totals.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-400 mb-4">{t('draft_subtitle')}</p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDraftModal(false)}
+                className="flex-1 py-2.5 text-sm text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                onClick={handleSaveDraft}
+                disabled={totals.count === 0}
+                className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl hover:from-amber-600 hover:to-orange-600 disabled:opacity-50"
+              >
+                {t('draft_save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 // Uses the global InventoryProvider already mounted in app/layout.tsx
 export default function OrdersPage() {

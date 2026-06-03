@@ -20,6 +20,8 @@ import { useInventory } from '@/contexts/InventoryContext';
 import { useProductSettings } from '@/contexts/ProductSettingsContext';
 import { useOrder } from '@/contexts/OrderContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSuppliers } from '@/contexts/SupplierContext';
+
 import { getStockStatus, getStatusClasses } from '@/lib/utils/adjust-order';
 import {
   parseCSVToPreview, parseExcelToPreview, applyMappingToRows,
@@ -56,12 +58,26 @@ interface GuidedImportProps {
   onCancel: () => void;
 }
 
+const DEFAULT_SUPPLIER_NAMES = [
+  'General', 'Pink Up', 'Beauty Creations', 'Bissu', 'Prosa', 'Vogue', 'Maybelline', "L'Oreal", 'NYX',
+];
+
 function GuidedImportModal({ preview, supplierName, onConfirm, onCancel }: GuidedImportProps) {
   const { t } = useLanguage();
+  const { suppliers } = useSuppliers();
   const [importMode, setImportMode] = useState<ImportMode>('snapshot');
   const [mapping, setMapping] = useState<ColMapping>({ ...preview.mapping });
   const [localSupplier, setLocalSupplier] = useState(supplierName);
   const [customSupplier, setCustomSupplier] = useState('');
+
+  // Merge the built-in defaults with the user's permanent supplier database
+  const supplierOptions = useMemo(() => {
+    const names = [...DEFAULT_SUPPLIER_NAMES, ...suppliers.map((s) => s.name)];
+    // Ensure the detected supplier is always selectable
+    if (supplierName && supplierName !== '__custom__') names.push(supplierName);
+    return Array.from(new Set(names.filter(Boolean)));
+  }, [suppliers, supplierName]);
+
 
   useEffect(() => {
     if (importMode === 'targetstock') {
@@ -133,17 +149,12 @@ function GuidedImportModal({ preview, supplierName, onConfirm, onCancel }: Guide
             <div className="flex gap-2">
               <select value={localSupplier} onChange={(e) => { setLocalSupplier(e.target.value); setCustomSupplier(''); }}
                 className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-pink-400">
-                <option value="General">General</option>
-                <option value="Pink Up">Pink Up</option>
-                <option value="Beauty Creations">Beauty Creations</option>
-                <option value="Bissu">Bissu</option>
-                <option value="Prosa">Prosa</option>
-                <option value="Vogue">Vogue</option>
-                <option value="Maybelline">Maybelline</option>
-                <option value="L'Oreal">L&apos;Oreal</option>
-                <option value="NYX">NYX</option>
+                {supplierOptions.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
                 <option value="__custom__">{t('import_add_new_supplier')}</option>
               </select>
+
               {localSupplier === '__custom__' && (
                 <input value={customSupplier} onChange={(e) => setCustomSupplier(e.target.value)}
                   placeholder={t('import_type_supplier_name')}
@@ -253,6 +264,8 @@ export default function InventoryHubPage() {
   const { getAll: getAllSettings } = useProductSettings();
   const { buildOrderFromSnapshot } = useOrder();
   const { t } = useLanguage();
+  const { addSupplierByName } = useSuppliers();
+
 
   const [preview, setPreview] = useState<ParsePreview | null>(null);
   const [pendingSupplier, setPendingSupplier] = useState('General');
@@ -366,7 +379,11 @@ export default function InventoryHubPage() {
       const products = applyMappingToRows(preview.rawRows, effectiveMapping, supplier);
       if (products.length === 0) { toast.error(t('import_no_valid_products')); return; }
 
+      // Persist the supplier permanently so it can be reused in future orders
+      if (supplier && supplier.trim()) { await addSupplierByName(supplier.trim()); }
+
       if (mode === 'targetstock') {
+
         const targetUpdates = new Map<string, { stockObjetivo: number; piezas: number; descripcion?: string; proveedor?: string }>();
         products.forEach((p) => {
           if (p.stockObjetivo != null || p.piezas != null) {
@@ -418,7 +435,8 @@ export default function InventoryHubPage() {
       setPreview(null);
     } catch (e: any) { toast.error(e.message || t('import_failed')); }
     finally { setIsImporting(false); }
-  }, [preview, checkFileDuplicate, addSnapshot, updateTargetStock, t]);
+  }, [preview, checkFileDuplicate, addSnapshot, updateTargetStock, addSupplierByName, t]);
+
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">

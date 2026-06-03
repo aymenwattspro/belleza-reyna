@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home, LayoutDashboard, Users, ShoppingCart,
-  History, LogOut, Globe,
+  History, LogOut, Globe, FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -14,8 +14,8 @@ import { useOrder } from '@/contexts/OrderContext';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface NavItem {
-  labelKey: 'nav_home' | 'nav_dashboard' | 'nav_suppliers' | 'nav_total_order' | 'nav_order_history';
-  descKey: 'nav_description_home' | 'nav_description_dashboard' | 'nav_description_suppliers' | 'nav_description_order' | 'nav_description_history';
+  labelKey: 'nav_home' | 'nav_dashboard' | 'nav_suppliers' | 'nav_total_order' | 'nav_pending_orders' | 'nav_order_history';
+  descKey: 'nav_description_home' | 'nav_description_dashboard' | 'nav_description_suppliers' | 'nav_description_order' | 'nav_description_pending' | 'nav_description_history';
   href: string;
   icon: React.ElementType;
   badgeFn?: () => number | null;
@@ -26,16 +26,19 @@ const NAV_ITEMS: NavItem[] = [
   { labelKey: 'nav_dashboard',     descKey: 'nav_description_dashboard',  href: '/dashboard',     icon: LayoutDashboard },
   { labelKey: 'nav_suppliers',     descKey: 'nav_description_suppliers',  href: '/suppliers',     icon: Users },
   { labelKey: 'nav_total_order',   descKey: 'nav_description_order',      href: '/orders',        icon: ShoppingCart },
+  { labelKey: 'nav_pending_orders', descKey: 'nav_description_pending',   href: '/draft-orders',  icon: FileText },
   { labelKey: 'nav_order_history', descKey: 'nav_description_history',    href: '/history',       icon: History },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { t, lang, setLang } = useLanguage();
-  const { orderLines } = useOrder();
+  const { orderLines, draftOrders } = useOrder();
 
   const { signOut } = useAuth();
   const pendingOrderCount = orderLines.filter(l => l.selected).length;
+  const draftCount = draftOrders.length;
+
 
   // signOut() (from AuthContext) already clears state + redirects to /login.
   // We do NOT redirect here to avoid duplicate router calls.

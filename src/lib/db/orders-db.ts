@@ -1,7 +1,7 @@
 // IndexedDB service for Orders & Order History
 
 const DB_NAME = 'BellezaReynaOrdersDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface OrderItem {
   id?: number;
@@ -28,6 +28,32 @@ export interface DeselectedProduct {
   clave: string;
   deselectedAt: string;
 }
+
+// ── Draft / Pending Orders ───────────────────────────────────────────────────
+// Draft orders are editable work-in-progress orders. They are NEVER counted in
+// dashboards, metrics, reports or history until the user confirms them, at which
+// point they become a ConfirmedOrder and the draft is removed.
+export interface DraftOrderItem {
+  clave: string;
+  descripcion: string;
+  proveedor: string;
+  currentStock: number;
+  unitsToOrder: number;
+  unitCost: number;
+  lineTotal: number;
+}
+
+export interface DraftOrder {
+  id: string;
+  name: string;
+  supplierName: string;
+  createdAt: string;
+  updatedAt: string;
+  totalProducts: number;
+  totalValue: number;
+  items: DraftOrderItem[];
+}
+
 
 class OrdersDBService {
   private db: IDBDatabase | null = null;
@@ -66,9 +92,69 @@ class OrdersDBService {
         if (!db.objectStoreNames.contains('deselectedProducts')) {
           db.createObjectStore('deselectedProducts', { keyPath: 'clave' });
         }
+
+        // Draft / pending orders store (v2)
+        if (!db.objectStoreNames.contains('draftOrders')) {
+          const draftStore = db.createObjectStore('draftOrders', { keyPath: 'id' });
+          draftStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+        }
       };
     });
   }
+
+  // ─── Draft / Pending Orders ────────────────────────────────────────────────
+
+  async saveDraftOrder(draft: DraftOrder): Promise<void> {
+    if (!this.db) await this.init();
+    return new Promise((res, rej) => {
+      const r = this.db!
+        .transaction('draftOrders', 'readwrite')
+        .objectStore('draftOrders')
+        .put(draft);
+      r.onsuccess = () => res();
+      r.onerror = () => rej(r.error);
+    });
+  }
+
+  async getDraftOrders(): Promise<DraftOrder[]> {
+    if (!this.db) await this.init();
+    const drafts = await new Promise<DraftOrder[]>((res, rej) => {
+      const r = this.db!.transaction('draftOrders', 'readonly')
+        .objectStore('draftOrders')
+        .getAll();
+      r.onsuccess = () => res(r.result as DraftOrder[]);
+      r.onerror = () => rej(r.error);
+    });
+    // Newest updated first
+    drafts.sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+    return drafts;
+  }
+
+  async getDraftOrder(id: string): Promise<DraftOrder | null> {
+    if (!this.db) await this.init();
+    return new Promise((res, rej) => {
+      const r = this.db!.transaction('draftOrders', 'readonly')
+        .objectStore('draftOrders')
+        .get(id);
+      r.onsuccess = () => res((r.result as DraftOrder) || null);
+      r.onerror = () => rej(r.error);
+    });
+  }
+
+  async deleteDraftOrder(id: string): Promise<void> {
+    if (!this.db) await this.init();
+    return new Promise((res, rej) => {
+      const r = this.db!
+        .transaction('draftOrders', 'readwrite')
+        .objectStore('draftOrders')
+        .delete(id);
+      r.onsuccess = () => res();
+      r.onerror = () => rej(r.error);
+    });
+  }
+
 
   // ─── Confirmed Orders ──────────────────────────────────────────────────────
 

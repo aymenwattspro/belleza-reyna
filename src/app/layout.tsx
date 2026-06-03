@@ -8,6 +8,8 @@ import { ProductSettingsProvider } from '@/contexts/ProductSettingsContext';
 import { InventoryProvider } from '@/contexts/InventoryContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { SupplierProvider } from '@/contexts/SupplierContext';
+
 
 const outfit = Outfit({
   subsets: ['latin'],
@@ -32,9 +34,12 @@ export default function RootLayout({
               <ChatProvider>
                 <OrderProvider>
                   <ProductSettingsProvider>
-                    <AppLayout>{children}</AppLayout>
+                    <SupplierProvider>
+                      <AppLayout>{children}</AppLayout>
+                    </SupplierProvider>
                   </ProductSettingsProvider>
                 </OrderProvider>
+
               </ChatProvider>
             </InventoryProvider>
           </LanguageProvider>
