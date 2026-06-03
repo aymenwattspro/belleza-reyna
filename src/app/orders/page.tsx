@@ -6,7 +6,9 @@ import { useRouter } from 'next/navigation';
 import {
   ShoppingCart, CheckSquare, Square, CheckCircle2,
   FileSpreadsheet, FileText, Package, Building2, Search, X, Star, Zap, ChevronDown, ChevronUp,
+  Ban, RotateCcw,
 } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useOrder, OrderLineItem } from '@/contexts/OrderContext';
@@ -24,7 +26,12 @@ function OrdersPageInner() {
   // ⚠️ DO NOT call buildOrderFromSnapshot here — the inventory hub page is the
   // single source of truth. It rebuilds the order whenever latestSnapshot changes.
   // Calling it again here (without settingsMap) produces a different count.
-  const { orderLines, deselectedClaves, toggleDeselect, batchToggleSelect, confirmOrder, saveDraftFromLines, loading } = useOrder();
+  const {
+    orderLines, deselectedClaves, toggleDeselect, batchToggleSelect, confirmOrder,
+    saveDraftFromLines, loading,
+    excludedProducts, excludeProduct, includeProduct,
+  } = useOrder();
+
   const { latestSnapshot, loading: invLoading, popularityScores } = useInventory();
   const { t } = useLanguage();
   const router = useRouter();
@@ -34,6 +41,8 @@ function OrdersPageInner() {
   const [draftName, setDraftName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [recOpen, setRecOpen] = useState(true); // recommendation panel open/collapsed
+  const [excludedOpen, setExcludedOpen] = useState(false); // "Do Not Order" panel
+
 
 
   // Build a fast clave → popularityScore map for sorting
@@ -395,8 +404,10 @@ function OrdersPageInner() {
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Units to Order</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit Cost</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Line Total</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-12"></th>
               </tr>
             </thead>
+
             <tbody className="divide-y divide-gray-100 bg-white">
               {filtered.map((line) => (
                 <tr
@@ -446,9 +457,20 @@ function OrdersPageInner() {
                   <td className="px-4 py-3 text-right">
                     <span className="font-semibold text-gray-800">${line.lineTotal.toFixed(2)}</span>
                   </td>
+                  {/* Do Not Order — permanently exclude this product from ordering */}
+                  <td className="px-2 py-3 text-center">
+                    <button
+                      onClick={() => excludeProduct({ clave: line.clave, descripcion: line.descripcion, proveedor: line.proveedor })}
+                      title={t('orders_do_not_order')}
+                      className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <Ban size={15} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
+
             {/* Footer totals */}
             <tfoot className="bg-gray-50 border-t-2 border-gray-200">
               <tr>
@@ -460,13 +482,54 @@ function OrdersPageInner() {
                 <td className="px-4 py-3 text-right font-bold text-emerald-700">
                   ${totals.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </td>
+                <td className="px-2 py-3"></td>
               </tr>
             </tfoot>
+
           </table>
         </div>
       )}
 
+      {/* ── Do Not Order list (permanently excluded products) ── */}
+      {excludedProducts.length > 0 && (
+        <div className="mx-6 my-6 rounded-2xl border border-red-100 bg-red-50/40 overflow-hidden">
+          <button
+            onClick={() => setExcludedOpen((v) => !v)}
+            className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-red-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Ban size={15} className="text-red-500" />
+              <span className="text-sm font-semibold text-red-700">{t('orders_excluded_title')}</span>
+              <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">
+                {excludedProducts.length}
+              </span>
+              <span className="hidden sm:inline text-xs text-red-400">— {t('orders_excluded_subtitle')}</span>
+            </div>
+            {excludedOpen ? <ChevronUp size={14} className="text-red-400" /> : <ChevronDown size={14} className="text-red-400" />}
+          </button>
+          {excludedOpen && (
+            <div className="px-5 pb-4 space-y-2">
+              {excludedProducts.map((p) => (
+                <div key={p.clave} className="flex items-center justify-between bg-white rounded-xl border border-red-100 px-4 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{p.descripcion}</p>
+                    <p className="text-[11px] text-gray-400 font-mono">{p.clave} · {p.proveedor}</p>
+                  </div>
+                  <button
+                    onClick={() => includeProduct(p.clave)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors shrink-0"
+                  >
+                    <RotateCcw size={13} /> {t('orders_reenable')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Confirm Modal ── */}
+
       {confirmModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full">

@@ -1,7 +1,9 @@
 // IndexedDB service for Orders & Order History
 
 const DB_NAME = 'BellezaReynaOrdersDB';
-const DB_VERSION = 2;
+const DB_VERSION = 4;
+
+
 
 export interface OrderItem {
   id?: number;
@@ -28,6 +30,21 @@ export interface DeselectedProduct {
   clave: string;
   deselectedAt: string;
 }
+
+// ── Excluded products ("Do Not Order") ───────────────────────────────────────
+// A product the user has *permanently* excluded from purchase recommendations.
+// Unlike a temporary "deselect" (which only skips the product for the current
+// order and reappears next time), an excluded product is keyed by its stable
+// `clave` and is filtered out of ALL order calculations — it never appears in
+// the Total Order list, never contributes to totals/costs, and survives dataset
+// imports and app reloads until the user explicitly re-enables ordering for it.
+export interface ExcludedProduct {
+  clave: string;             // stable product identifier (survives re-imports)
+  descripcion: string;       // cached for display in the "excluded" view
+  proveedor: string;         // cached for display in the "excluded" view
+  excludedAt: string;        // ISO timestamp of when it was excluded
+}
+
 
 // ── Draft / Pending Orders ───────────────────────────────────────────────────
 // Draft orders are editable work-in-progress orders. They are NEVER counted in
@@ -98,7 +115,13 @@ class OrdersDBService {
           const draftStore = db.createObjectStore('draftOrders', { keyPath: 'id' });
           draftStore.createIndex('updatedAt', 'updatedAt', { unique: false });
         }
+
+        // Excluded products / "Do Not Order" store (v3) — keyed by stable clave
+        if (!db.objectStoreNames.contains('excludedProducts')) {
+          db.createObjectStore('excludedProducts', { keyPath: 'clave' });
+        }
       };
+
     });
   }
 
@@ -303,6 +326,67 @@ class OrdersDBService {
       r.onerror = () => rej(r.error);
     });
   }
+
+  // ─── Excluded Products ("Do Not Order") ──────────────────────────────────────
+
+  /**
+   * Ensure a given object store exists on the open connection. If a stale
+   * connection from an older DB version is cached (e.g. after a hot reload),
+   * close it and reopen so the upgrade that creates the store can run.
+   */
+  private async ensureStore(name: string): Promise<void> {
+    if (!this.db) await this.init();
+    if (this.db && !this.db.objectStoreNames.contains(name)) {
+      this.db.close();
+      this.db = null;
+      await this.init();
+    }
+  }
+
+  /** Return the full list of excluded products (with cached display metadata). */
+  async getExcludedProducts(): Promise<ExcludedProduct[]> {
+    await this.ensureStore('excludedProducts');
+
+    return new Promise((res, rej) => {
+
+      const r = this.db!.transaction('excludedProducts', 'readonly')
+        .objectStore('excludedProducts')
+        .getAll();
+      r.onsuccess = () => res(r.result as ExcludedProduct[]);
+      r.onerror = () => rej(r.error);
+    });
+  }
+
+  /** Mark a product as permanently excluded from ordering. */
+  async excludeProduct(product: ExcludedProduct): Promise<void> {
+    await this.ensureStore('excludedProducts');
+
+    return new Promise((res, rej) => {
+
+      const r = this.db!
+        .transaction('excludedProducts', 'readwrite')
+        .objectStore('excludedProducts')
+        .put(product);
+      r.onsuccess = () => res();
+      r.onerror = () => rej(r.error);
+    });
+  }
+
+  /** Re-enable ordering for a previously excluded product. */
+  async includeProduct(clave: string): Promise<void> {
+    await this.ensureStore('excludedProducts');
+
+    return new Promise((res, rej) => {
+
+      const r = this.db!
+        .transaction('excludedProducts', 'readwrite')
+        .objectStore('excludedProducts')
+        .delete(clave);
+      r.onsuccess = () => res();
+      r.onerror = () => rej(r.error);
+    });
+  }
 }
+
 
 export const ordersDB = new OrdersDBService();

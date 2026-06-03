@@ -92,6 +92,12 @@ const DICT = {
     draft_no_inventory_add: 'Import inventory first to add products.',
     draft_already_added: 'Already in this draft',
     orders_save_draft: 'Save as Draft',
+    orders_do_not_order: 'Do not order (exclude permanently)',
+    orders_excluded_title: 'Do Not Order list',
+    orders_excluded_subtitle: 'These products are permanently excluded from ordering and do not affect totals.',
+    orders_excluded_empty: 'No excluded products.',
+    orders_reenable: 'Re-enable ordering',
+
 
     // ── Auth ──
     login_title: 'Welcome back',
@@ -529,6 +535,12 @@ const DICT = {
     draft_no_inventory_add: 'Importa inventario primero para agregar productos.',
     draft_already_added: 'Ya está en este borrador',
     orders_save_draft: 'Guardar Borrador',
+    orders_do_not_order: 'No pedir (excluir permanentemente)',
+    orders_excluded_title: 'Lista de No Pedir',
+    orders_excluded_subtitle: 'Estos productos están excluidos permanentemente de los pedidos y no afectan los totales.',
+    orders_excluded_empty: 'No hay productos excluidos.',
+    orders_reenable: 'Reactivar pedido',
+
     // ── Auth ──
     login_title: 'Bienvenida de nuevo',
 

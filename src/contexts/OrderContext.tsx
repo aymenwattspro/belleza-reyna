@@ -6,8 +6,11 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useMemo,
+  useRef,
 } from 'react';
-import { ordersDB, ConfirmedOrder, OrderItem, DraftOrder, DraftOrderItem } from '@/lib/db/orders-db';
+import { ordersDB, ConfirmedOrder, OrderItem, DraftOrder, DraftOrderItem, ExcludedProduct } from '@/lib/db/orders-db';
+
 import { adjustOrder } from '@/lib/utils/adjust-order';
 import { ProductSnapshot } from '@/lib/types/inventory-timeline';
 import { toast } from 'sonner';
@@ -32,6 +35,12 @@ interface OrderContextType {
   orderLines: OrderLineItem[];
   deselectedClaves: Set<string>;
 
+  // Permanently excluded products ("Do Not Order") — filtered out of all
+  // order calculations until the user re-enables them.
+  excludedProducts: ExcludedProduct[];
+  excludedClaves: Set<string>;
+
+
   // Confirmed order history
   confirmedOrders: ConfirmedOrder[];
 
@@ -49,7 +58,13 @@ interface OrderContextType {
   ) => void;
   toggleDeselect: (clave: string) => Promise<void>;
   batchToggleSelect: (claves: string[], select: boolean) => Promise<void>;
+
+  // Permanent exclusion actions
+  excludeProduct: (product: { clave: string; descripcion: string; proveedor: string }) => Promise<void>;
+  includeProduct: (clave: string) => Promise<void>;
+
   confirmOrder: (selectedLines: OrderLineItem[]) => Promise<void>;
+
   deleteConfirmedOrder: (orderId: string) => Promise<void>;
   refreshHistory: () => Promise<void>;
 
@@ -71,17 +86,33 @@ const CONFIRMED_SNAP_KEY = 'belleza_confirmed_snap_id';
 export function OrderProvider({ children }: { children: React.ReactNode }) {
   const [orderLines, setOrderLines] = useState<OrderLineItem[]>([]);
   const [deselectedClaves, setDeselectedClaves] = useState<Set<string>>(new Set());
+  const [excludedProducts, setExcludedProducts] = useState<ExcludedProduct[]>([]);
   const [confirmedOrders, setConfirmedOrders] = useState<ConfirmedOrder[]>([]);
   const [draftOrders, setDraftOrders] = useState<DraftOrder[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Load deselected products, history and drafts on mount
+  // Fast lookup set of excluded product keys (clave), derived from the list.
+  const excludedClaves = useMemo(
+    () => new Set(excludedProducts.map((p) => p.clave)),
+    [excludedProducts]
+  );
+
+  // Remember the inputs of the last snapshot build so exclude/include actions
+  // can recompute the live order without requiring a fresh import.
+  const lastBuildRef = useRef<{
+    products: ProductSnapshot[];
+    settingsMap?: Map<string, { minStockUnits: number; piezas?: number }>;
+  } | null>(null);
+
+  // Load deselected products, excluded products, history and drafts on mount
   useEffect(() => {
     const load = async () => {
       try {
         await ordersDB.init();
         const claves = await ordersDB.getDeselectedClaves();
         setDeselectedClaves(new Set(claves));
+        const excluded = await ordersDB.getExcludedProducts();
+        setExcludedProducts(excluded);
         const history = await ordersDB.getConfirmedOrders();
         setConfirmedOrders(history);
         const drafts = await ordersDB.getDraftOrders();
@@ -92,6 +123,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     };
     load();
   }, []);
+
 
 
   /**
@@ -129,6 +161,10 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         confirmedSet = new Set();
       }
 
+      // Remember the inputs so include/exclude actions can recompute the live
+      // order on the fly (e.g. from the Orders page) without a fresh import.
+      lastBuildRef.current = { products, settingsMap };
+
       // ── Build order lines ──────────────────────────────────────
       const lines: OrderLineItem[] = [];
 
@@ -136,7 +172,15 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         // Skip products already confirmed in this snapshot cycle
         if (confirmedSet.has(p.clave)) continue;
 
+        // ⛔ Skip permanently-excluded products ("Do Not Order").
+        // Keyed by the stable `clave`, this guarantees the product NEVER
+        // appears in the Total Order list, NEVER contributes to total units or
+        // cost, and that its target-stock shortage is ignored — even right
+        // after a fresh dataset import.
+        if (excludedClaves.has(p.clave)) continue;
+
         const settings = settingsMap?.get(p.clave);
+
         const stockObjetivo = (settings?.minStockUnits && settings.minStockUnits > 0)
           ? settings.minStockUnits
           : (p.stockObjetivo ?? 0);
@@ -173,10 +217,124 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
       setOrderLines(lines);
     },
-    [deselectedClaves]
+    [deselectedClaves, excludedClaves]
+  );
+
+  /**
+   * Recompute the live order from the last snapshot inputs, applying the
+   * current confirmed / excluded / deselected sets. Used by include/exclude so
+   * the order updates even when the import page is not mounted.
+   */
+  const rebuildFromLastInputs = useCallback(
+    (excludedSet: Set<string>, deselectedSet: Set<string>) => {
+      const ref = lastBuildRef.current;
+      if (!ref) return;
+
+      let confirmedSet = new Set<string>();
+      try {
+        const raw = localStorage.getItem(CONFIRMED_KEY);
+        confirmedSet = raw ? new Set(JSON.parse(raw)) : new Set();
+      } catch {
+        confirmedSet = new Set();
+      }
+
+      const lines: OrderLineItem[] = [];
+      for (const p of ref.products) {
+        if (confirmedSet.has(p.clave)) continue;
+        if (excludedSet.has(p.clave)) continue; // honour "Do Not Order"
+
+        const settings = ref.settingsMap?.get(p.clave);
+        const stockObjetivo = (settings?.minStockUnits && settings.minStockUnits > 0)
+          ? settings.minStockUnits
+          : (p.stockObjetivo ?? 0);
+        const piezas = (settings?.piezas && settings.piezas > 0)
+          ? settings.piezas
+          : (p.piezas ?? 1);
+        const currentStock = Math.max(0, p.existencia);
+        const baseOrder = Math.max(0, stockObjetivo - currentStock);
+        const unitsToOrder = adjustOrder(baseOrder, piezas);
+
+        if (unitsToOrder > 0) {
+          lines.push({
+            clave: p.clave,
+            descripcion: p.descripcion,
+            proveedor: p.proveedor || 'General',
+            currentStock,
+            stockObjetivo,
+            piezas,
+            unitCost: p.precioC || 0,
+            baseOrder,
+            unitsToOrder,
+            lineTotal: unitsToOrder * (p.precioC || 0),
+            selected: !deselectedSet.has(p.clave),
+          });
+        }
+      }
+
+      lines.sort((a, b) => {
+        const supplierCmp = a.proveedor.localeCompare(b.proveedor);
+        if (supplierCmp !== 0) return supplierCmp;
+        return a.descripcion.localeCompare(b.descripcion);
+      });
+
+      setOrderLines(lines);
+    },
+    []
+  );
+
+  // ─── Permanent product exclusion ("Do Not Order") ───────────────────────────
+
+  /**
+   * Permanently exclude a product from ordering. It is removed from the live
+   * order immediately and persisted (keyed by clave) so it stays excluded
+   * across dataset imports and app reloads.
+   */
+  const excludeProduct = useCallback(
+    async (product: { clave: string; descripcion: string; proveedor: string }) => {
+      try {
+        const record: ExcludedProduct = {
+          clave: product.clave,
+          descripcion: product.descripcion,
+          proveedor: product.proveedor || 'General',
+          excludedAt: new Date().toISOString(),
+        };
+        await ordersDB.excludeProduct(record);
+        setExcludedProducts((prev) => [
+          ...prev.filter((p) => p.clave !== record.clave),
+          record,
+        ]);
+        // Drop it from the current order view right away
+        setOrderLines((prev) => prev.filter((l) => l.clave !== record.clave));
+        toast.success(`"${record.descripcion}" excluded from ordering`);
+      } catch (e) {
+        console.error(e);
+        toast.error('Error excluding product');
+      }
+    },
+    []
+  );
+
+  /** Re-enable ordering for a previously excluded product. */
+  const includeProduct = useCallback(
+    async (clave: string) => {
+      try {
+        await ordersDB.includeProduct(clave);
+        const nextExcluded = new Set(excludedClaves);
+        nextExcluded.delete(clave);
+        setExcludedProducts((prev) => prev.filter((p) => p.clave !== clave));
+        // Rebuild so the product reappears in the order if still below target
+        rebuildFromLastInputs(nextExcluded, deselectedClaves);
+        toast.success('Ordering re-enabled');
+      } catch (e) {
+        console.error(e);
+        toast.error('Error re-enabling product');
+      }
+    },
+    [excludedClaves, deselectedClaves, rebuildFromLastInputs]
   );
 
   const toggleDeselect = useCallback(
+
     async (clave: string) => {
       try {
         const newSet = new Set(deselectedClaves);
@@ -480,13 +638,18 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
       value={{
         orderLines,
         deselectedClaves,
+        excludedProducts,
+        excludedClaves,
         confirmedOrders,
         draftOrders,
         loading,
         buildOrderFromSnapshot,
         toggleDeselect,
         batchToggleSelect,
+        excludeProduct,
+        includeProduct,
         confirmOrder,
+
         deleteConfirmedOrder,
         refreshHistory,
         refreshDrafts,
