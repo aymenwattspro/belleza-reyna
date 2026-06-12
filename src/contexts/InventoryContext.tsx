@@ -256,6 +256,8 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     snapshot: InventorySnapshot,
     _fileHash?: string,
   ): Promise<SmartSaveResult> => {
+    console.log('ADD SNAPSHOT CALLED');
+    console.log('SUPABASE AVAILABLE:', inventoryRepo.isAvailable());
     const cachePayload = {
       id: snapshot.id,
       timestamp: snapshot.timestamp,

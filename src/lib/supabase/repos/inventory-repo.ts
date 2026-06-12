@@ -140,6 +140,7 @@ export const inventoryRepo = {
    * can show the same "duplicate snapshot" message as the old IndexedDB path.
    */
   async importInventory(snapshot: InventorySnapshot): Promise<SmartSaveResult> {
+    console.log('IMPORT INVENTORY REPO ENTERED');
     const supabase = getSupabaseClient();
     if (!supabase) throw new Error('Supabase not configured');
 
