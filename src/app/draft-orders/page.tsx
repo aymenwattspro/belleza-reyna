@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   FileText, Calendar, Building2, Trash2, Pencil, CheckCircle2,
-  Package, Clock,
+  Package, Clock, FileSpreadsheet,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrder } from '@/contexts/OrderContext';
@@ -13,6 +13,11 @@ import { useOrder } from '@/contexts/OrderContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DraftOrder } from '@/lib/db/orders-db';
 import { format } from 'date-fns';
+
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
 
 export default function DraftOrdersPage() {
   const router = useRouter();
@@ -32,6 +37,77 @@ export default function DraftOrdersPage() {
     setConfirmTarget(null);
     toast.success(t('draft_confirmed'));
   };
+
+  // Build a filesystem-safe file name from the pending order name
+  const safeFileName = (draft: DraftOrder) => {
+    const base = (draft.name || 'pending_order').replace(/[^a-z0-9_\-]+/gi, '_').replace(/^_+|_+$/g, '');
+    return `belleza_reyna_${base || 'pending_order'}_${format(new Date(), 'yyyy-MM-dd')}`;
+  };
+
+  // ── Export a single pending order to Excel ────────────────────────────────
+  const exportExcel = (draft: DraftOrder) => {
+    const rows = draft.items.map((i) => ({
+      Reference: i.clave,
+      Description: i.descripcion,
+      Supplier: i.proveedor,
+      'Current Stock': i.currentStock,
+      'Units to Order': i.unitsToOrder,
+      'Unit Cost ($)': i.unitCost.toFixed(2),
+      'Line Total ($)': i.lineTotal.toFixed(2),
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Pending Order');
+
+    // Summary rows
+    XLSX.utils.sheet_add_aoa(ws, [
+      [],
+      ['', '', '', '', 'TOTAL PRODUCTS:', draft.totalProducts],
+      ['', '', '', '', 'TOTAL VALUE ($):', draft.totalValue.toFixed(2)],
+    ], { origin: -1 });
+
+    XLSX.writeFile(wb, `${safeFileName(draft)}.xlsx`);
+    toast.success(t('draft_exported_excel'));
+  };
+
+  // ── Export a single pending order to PDF ──────────────────────────────────
+  const exportPDF = (draft: DraftOrder) => {
+    const doc = new jsPDF({ orientation: 'landscape' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('BELLEZA REYNA', 14, 18);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Pending Order: ${draft.name}`, 14, 26);
+    doc.text(`Supplier: ${draft.supplierName}`, 14, 32);
+    doc.text(`Date: ${format(new Date(), 'dd/MM/yyyy')}`, 14, 38);
+    doc.text(`Products: ${draft.totalProducts}  ·  Total: $${draft.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 44);
+
+    autoTable(doc, {
+      startY: 52,
+      head: [['Ref', 'Description', 'Supplier', 'Current Stock', 'Order Qty', 'Unit Cost', 'Line Total']],
+      body: draft.items.map((i) => [
+        i.clave,
+        i.descripcion,
+        i.proveedor,
+        i.currentStock,
+        i.unitsToOrder,
+        `$${i.unitCost.toFixed(2)}`,
+        `$${i.lineTotal.toFixed(2)}`,
+      ]),
+      foot: [['', '', '', '', '', 'TOTAL:', `$${draft.totalValue.toFixed(2)}`]],
+      headStyles: { fillColor: [236, 72, 153], textColor: 255, fontStyle: 'bold' },
+      footStyles: { fillColor: [243, 244, 246], textColor: [17, 24, 39], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+      styles: { fontSize: 9, cellPadding: 3 },
+    });
+
+    doc.save(`${safeFileName(draft)}.pdf`);
+    toast.success(t('draft_exported_pdf'));
+  };
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -131,13 +207,33 @@ export default function DraftOrdersPage() {
                   >
                     <CheckCircle2 size={12} /> {t('draft_confirm')}
                   </button>
-                  <button
-                    onClick={() => setDeleteTarget(draft.id)}
-                    className="ml-auto p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                    title={t('draft_delete')}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+
+                  <div className="ml-auto flex items-center gap-1">
+                    <button
+                      onClick={() => exportExcel(draft)}
+                      disabled={draft.items.length === 0}
+                      className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                      title={t('draft_export_excel')}
+                    >
+                      <FileSpreadsheet size={13} className="text-emerald-600" /> {t('draft_export_excel')}
+                    </button>
+                    <button
+                      onClick={() => exportPDF(draft)}
+                      disabled={draft.items.length === 0}
+                      className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                      title={t('draft_export_pdf')}
+                    >
+                      <FileText size={13} className="text-red-500" /> {t('draft_export_pdf')}
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(draft.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title={t('draft_delete')}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+
                 </div>
               </div>
             ))}
