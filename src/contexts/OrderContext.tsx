@@ -87,6 +87,7 @@ interface OrderContextType {
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
 export function OrderProvider({ children }: { children: React.ReactNode }) {
+  console.log('ORDER CONTEXT LOADED');
   const { approved } = useAuth();
 
   const [orderLines, setOrderLines] = useState<OrderLineItem[]>([]);
@@ -506,6 +507,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
   const confirmOrder = useCallback(
     async (selectedLines: OrderLineItem[]) => {
+      console.log('CONFIRM ORDER BUTTON CLICKED');
       if (selectedLines.length === 0) return;
       setLoading(true);
 
