@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, use } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Save, CheckCircle2, Plus, Trash2, Search, X,
-  Building2, Package, FileText, RefreshCw, AlertTriangle,
+  Building2, Package, FileText, RefreshCw, AlertTriangle, FileSpreadsheet,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrder } from '@/contexts/OrderContext';
@@ -13,11 +13,14 @@ import { useInventory } from '@/contexts/InventoryContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DraftOrder, DraftOrderItem } from '@/lib/db/orders-db';
 import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function DraftEditorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { getDraft, updateDraft, confirmDraft, loading } = useOrder();
+  const { getDraft, updateDraft, confirmDraft, deleteDraft, loading } = useOrder();
   const { latestSnapshot } = useInventory();
   const { t } = useLanguage();
 
@@ -33,6 +36,7 @@ export default function DraftEditorPage({ params }: { params: Promise<{ id: stri
   const [addOpen, setAddOpen] = useState(false);
   const [addSearch, setAddSearch] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   // ── Load draft once ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -74,9 +78,27 @@ export default function DraftEditorPage({ params }: { params: Promise<{ id: stri
     setDirty(true);
   };
 
-  const removeItem = (clave: string) => {
-    setItems((prev) => prev.filter((i) => i.clave !== clave));
-    setDirty(true);
+  // Removing a product PERSISTS immediately and rebuilds the live order, so the
+  // product reappears in the Total Order tab right away (no "Save changes" needed).
+  const removeItem = async (clave: string) => {
+    if (!draft) return;
+    const nextItems = items.filter((i) => i.clave !== clave);
+    setItems(nextItems);
+
+    const set = new Set(nextItems.map((i) => i.proveedor));
+    const nextSupplier =
+      set.size === 1 ? Array.from(set)[0] : set.size === 0 ? (draft.supplierName || 'General') : 'Mixed';
+
+    const updated: DraftOrder = {
+      ...draft,
+      name: name.trim() || draft.name,
+      supplierName: nextSupplier,
+      items: nextItems,
+    };
+    await updateDraft(updated);   // recomputes totals + rebuilds Total Order list
+    setDraft({ ...updated });
+    setDirty(false);
+    toast.success('Product removed — back in Total Order');
   };
 
   const addProduct = (p: { clave: string; descripcion: string; proveedor?: string; existencia: number; precioC?: number; piezas?: number }) => {
@@ -130,6 +152,72 @@ export default function DraftEditorPage({ params }: { params: Promise<{ id: stri
     setConfirmOpen(false);
     toast.success(t('draft_confirmed'));
     router.push('/draft-orders');
+  };
+
+  // ── Delete the whole pending order ────────────────────────────────────────
+  const handleDeleteOrder = async () => {
+    await deleteDraft(id);
+    setDeleteOpen(false);
+    toast.success('Pending order deleted');
+    router.push('/draft-orders');
+  };
+
+  // ── Export Excel ──────────────────────────────────────────────────────────
+  const safeFileName = () => (name || draft?.name || 'pending_order').replace(/[^\w.-]+/g, '_');
+
+  const exportExcel = () => {
+    if (items.length === 0) { toast.error(t('draft_empty_items')); return; }
+    const rows = items.map((l) => ({
+      Reference: l.clave,
+      Description: l.descripcion,
+      Supplier: l.proveedor,
+      'Current Stock': l.currentStock,
+      'Units to Order': l.unitsToOrder,
+      'Unit Cost ($)': l.unitCost.toFixed(2),
+      'Line Total ($)': l.lineTotal.toFixed(2),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Pending Order');
+    XLSX.utils.sheet_add_aoa(ws, [
+      [],
+      ['', '', '', '', 'TOTAL PRODUCTS:', totals.count],
+      ['', '', '', '', 'TOTAL VALUE ($):', totals.totalValue.toFixed(2)],
+    ], { origin: -1 });
+    XLSX.writeFile(wb, `${safeFileName()}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    toast.success('Excel downloaded');
+  };
+
+  // ── Export PDF ────────────────────────────────────────────────────────────
+  const exportPDF = () => {
+    if (items.length === 0) { toast.error(t('draft_empty_items')); return; }
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('BELLEZA REYNA', 14, 18);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.text(`Pending Order: ${name || draft?.name || ''}`, 14, 26);
+    doc.text(`Supplier: ${supplierName}`, 14, 32);
+    doc.text(`Date: ${format(new Date(), 'dd/MM/yyyy')}`, 14, 38);
+    doc.text(`Products: ${totals.count}  ·  Total: $${totals.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 44);
+
+    autoTable(doc, {
+      startY: 52,
+      head: [['Ref', 'Description', 'Supplier', 'Current Stock', 'Order Qty', 'Unit Cost', 'Line Total']],
+      body: items.map((l) => [
+        l.clave, l.descripcion, l.proveedor, l.currentStock, l.unitsToOrder,
+        `$${l.unitCost.toFixed(2)}`, `$${l.lineTotal.toFixed(2)}`,
+      ]),
+      foot: [['', '', '', '', '', 'TOTAL:', `$${totals.totalValue.toFixed(2)}`]],
+      headStyles: { fillColor: [245, 158, 11], textColor: 255, fontStyle: 'bold' },
+      footStyles: { fillColor: [243, 244, 246], textColor: [17, 24, 39], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+      styles: { fontSize: 9, cellPadding: 3 },
+    });
+
+    doc.save(`${safeFileName()}_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    toast.success('PDF downloaded');
   };
 
   // ── Inventory products available to add ───────────────────────────────────
@@ -210,6 +298,20 @@ export default function DraftEditorPage({ params }: { params: Promise<{ id: stri
               </span>
             )}
             <button
+              onClick={exportExcel}
+              disabled={items.length === 0}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            >
+              <FileSpreadsheet size={15} className="text-emerald-600" /> Excel
+            </button>
+            <button
+              onClick={exportPDF}
+              disabled={items.length === 0}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            >
+              <FileText size={15} className="text-red-500" /> PDF
+            </button>
+            <button
               onClick={() => setAddOpen(true)}
               className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
             >
@@ -220,6 +322,12 @@ export default function DraftEditorPage({ params }: { params: Promise<{ id: stri
               className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
             >
               <Save size={15} className="text-indigo-500" /> {t('draft_save_changes')}
+            </button>
+            <button
+              onClick={() => setDeleteOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl hover:bg-red-50 transition-colors"
+            >
+              <Trash2 size={15} /> Delete order
             </button>
             <button
               onClick={() => setConfirmOpen(true)}
@@ -396,6 +504,37 @@ export default function DraftEditorPage({ params }: { params: Promise<{ id: stri
             <div className="flex items-center justify-end px-6 py-3 border-t border-gray-100">
               <button onClick={() => setAddOpen(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
                 {t('close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete order modal */}
+      {deleteOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center">
+                <Trash2 size={24} className="text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">Delete pending order</h3>
+                <p className="text-sm text-gray-500">{name || draft.name}</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-500 mb-5">
+              This permanently deletes this pending order. Its {totals.count} product(s) will return to the Total Order list.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteOpen(false)} className="flex-1 py-2.5 text-sm text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200">
+                {t('cancel')}
+              </button>
+              <button
+                onClick={handleDeleteOrder}
+                className="flex-1 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-red-500 to-rose-600 rounded-xl hover:from-red-600 hover:to-rose-700"
+              >
+                Delete
               </button>
             </div>
           </div>

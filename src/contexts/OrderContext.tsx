@@ -13,6 +13,7 @@ import { ConfirmedOrder, OrderItem, DraftOrder, DraftOrderItem, ExcludedProduct 
 import { ordersRepo } from '@/lib/supabase/repos/orders-repo';
 import { subscribeTable } from '@/lib/supabase/realtime';
 import { migrateOrdersToSupabaseOnce } from '@/lib/supabase/orders-migration';
+import { activityRepo } from '@/lib/supabase/repos/activity-repo';
 import { useAuth } from '@/contexts/AuthContext';
 
 import { adjustOrder } from '@/lib/utils/adjust-order';
@@ -416,6 +417,10 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
           excludedAt: new Date().toISOString(),
         };
         await ordersRepo.excludeProduct(record);
+        activityRepo.log('product.exclude', 'product', record.clave, {
+          description: record.descripcion,
+          supplier: record.proveedor,
+        });
         setExcludedProducts((prev) => [
           ...prev.filter((p) => p.clave !== record.clave),
           record,
@@ -436,6 +441,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     async (clave: string) => {
       try {
         await ordersRepo.includeProduct(clave);
+        activityRepo.log('product.include', 'product', clave);
         const nextExcluded = new Set(excludedClaves);
         nextExcluded.delete(clave);
         setExcludedProducts((prev) => prev.filter((p) => p.clave !== clave));
@@ -612,6 +618,12 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
           items,
         });
 
+        activityRepo.log('draft.create', 'order', draft.id, {
+          name: draft.name,
+          products: items.length,
+          value: items.reduce((s, i) => s + i.lineTotal, 0),
+        });
+
         await refreshDrafts();
 
         // Hide the products that were moved into this pending order from the
@@ -675,6 +687,10 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         };
 
         await ordersRepo.updateDraft(updated);
+        activityRepo.log('draft.add', 'order', draftId, {
+          name: updated.name,
+          added: newItems.length,
+        });
         await refreshDrafts();
 
         // Hide the products that were moved into this pending order from the
@@ -698,6 +714,11 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
       try {
         const next = recomputeDraft(draft);
         await ordersRepo.updateDraft(next);
+        activityRepo.log('draft.update', 'order', next.id, {
+          name: next.name,
+          products: next.totalProducts,
+          value: next.totalValue,
+        });
         // Refresh drafts and rebuild the live order: products added to the
         // pending order disappear, products removed from it reappear (if still
         // below target stock).
@@ -717,6 +738,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     async (id: string) => {
       try {
         await ordersRepo.deleteDraftOrder(id);
+        activityRepo.log('draft.delete', 'order', id);
         // Refresh drafts and rebuild so the freed products reappear in the
         // live Total Order list (if they are still below target stock).
         const drafts = await ordersRepo.getDraftOrders();

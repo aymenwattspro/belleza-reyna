@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home, LayoutDashboard, Users, ShoppingCart,
-  History, LogOut, Globe, FileText,
+  History, LogOut, Globe, FileText, Activity,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -14,8 +14,8 @@ import { useOrder } from '@/contexts/OrderContext';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface NavItem {
-  labelKey: 'nav_home' | 'nav_dashboard' | 'nav_suppliers' | 'nav_total_order' | 'nav_pending_orders' | 'nav_order_history';
-  descKey: 'nav_description_home' | 'nav_description_dashboard' | 'nav_description_suppliers' | 'nav_description_order' | 'nav_description_pending' | 'nav_description_history';
+  labelKey: 'nav_home' | 'nav_dashboard' | 'nav_suppliers' | 'nav_total_order' | 'nav_pending_orders' | 'nav_order_history' | 'nav_activity';
+  descKey: 'nav_description_home' | 'nav_description_dashboard' | 'nav_description_suppliers' | 'nav_description_order' | 'nav_description_pending' | 'nav_description_history' | 'nav_description_activity';
   href: string;
   icon: React.ElementType;
   badgeFn?: () => number | null;
@@ -28,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { labelKey: 'nav_total_order',   descKey: 'nav_description_order',      href: '/orders',        icon: ShoppingCart },
   { labelKey: 'nav_pending_orders', descKey: 'nav_description_pending',   href: '/draft-orders',  icon: FileText },
   { labelKey: 'nav_order_history', descKey: 'nav_description_history',    href: '/history',       icon: History },
+  { labelKey: 'nav_activity',      descKey: 'nav_description_activity',   href: '/activity',      icon: Activity },
 ];
 
 export function Sidebar() {
