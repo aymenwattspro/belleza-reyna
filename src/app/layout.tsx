@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Outfit } from 'next/font/google';
 import './globals.css';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { LiveOrderSync } from '@/components/LiveOrderSync';
 import { OrderProvider } from '@/contexts/OrderContext';
 import { ChatProvider } from '@/contexts/ChatContext';
 import { ProductSettingsProvider } from '@/contexts/ProductSettingsContext';
@@ -35,6 +36,7 @@ export default function RootLayout({
                 <OrderProvider>
                   <ProductSettingsProvider>
                     <SupplierProvider>
+                      <LiveOrderSync />
                       <AppLayout>{children}</AppLayout>
                     </SupplierProvider>
                   </ProductSettingsProvider>

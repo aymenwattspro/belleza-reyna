@@ -24,6 +24,8 @@ const DICT = {
     nav_description_history: 'Confirmed orders',
     nav_pending_orders: 'Pending Orders',
     nav_description_pending: 'Pending orders',
+    nav_activity: 'Activity',
+    nav_description_activity: 'Who did what & when',
 
     // ── Supplier management ──
     sup_manage_hint: 'Manage your permanent supplier list. Saved suppliers can be reused in every order.',
@@ -479,6 +481,8 @@ const DICT = {
     nav_description_history: 'Pedidos confirmados',
     nav_pending_orders: 'Pedidos Pendientes',
     nav_description_pending: 'Pedidos pendientes',
+    nav_activity: 'Actividad',
+    nav_description_activity: 'Quién hizo qué y cuándo',
 
     // ── Supplier management ──
     sup_manage_hint: 'Administra tu lista permanente de proveedores. Los proveedores guardados se pueden reutilizar en cada pedido.',
