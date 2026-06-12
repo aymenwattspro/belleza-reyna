@@ -415,6 +415,10 @@ export const ordersRepo = {
       p_items: payload,
     });
     if (error) throw error;
+    console.log('CONFIRM ORDER LINES RPC CALLED', {
+      supplier,
+      itemsCount: items.length,
+    });
     return data as string;
   },
 
@@ -424,7 +428,11 @@ export const ordersRepo = {
     if (!supabase) throw new Error('Supabase not configured');
     const { data, error } = await supabase.rpc('confirm_draft_order', { p_draft_id: draftId });
     if (error) throw error;
+    console.log('CONFIRM DRAFT RPC CALLED', {
+      draftId,
+    });
     return data as string;
+    console.log('CONFIRM DRAFT RPC CALLED');
   },
 
   // ── Migration helpers (one-time IndexedDB → Supabase) ───────────────────────
