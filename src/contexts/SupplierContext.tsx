@@ -7,7 +7,9 @@ import React, {
   useCallback,
   useEffect,
 } from 'react';
-import { suppliersDB, Supplier } from '@/lib/db/suppliers-db';
+import { suppliersRepo, SupplierConflictError } from '@/lib/supabase/repos/suppliers-repo';
+import { subscribeTable } from '@/lib/supabase/realtime';
+import type { Supplier } from '@/lib/db/suppliers-db';
 
 export type { Supplier } from '@/lib/db/suppliers-db';
 
@@ -41,18 +43,18 @@ export function SupplierProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const all = await suppliersDB.getAll();
+      const all = await suppliersRepo.getAll();
       setSuppliers(all);
     } catch (e) {
       console.error('SupplierContext refresh error:', e);
     }
   }, []);
 
+  // Initial load
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        await suppliersDB.init();
         await refresh();
       } catch (e) {
         console.error('SupplierContext init error:', e);
@@ -62,6 +64,9 @@ export function SupplierProvider({ children }: { children: React.ReactNode }) {
     };
     load();
   }, [refresh]);
+
+  // Realtime: re-fetch whenever any user changes the shared suppliers table
+  useEffect(() => subscribeTable('suppliers', refresh), [refresh]);
 
   const nameExists = useCallback(
     (name: string, exceptId?: string) => {
@@ -77,25 +82,24 @@ export function SupplierProvider({ children }: { children: React.ReactNode }) {
     async (input: SupplierInput): Promise<Supplier | null> => {
       const name = (input.name || '').trim();
       if (!name) return null;
-      if (nameExists(name)) return null;
+      if (nameExists(name)) return null; // fast client-side guard
 
-      const now = new Date().toISOString();
-      const supplier: Supplier = {
-        id: `sup_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        name,
-        contactPerson: input.contactPerson?.trim() || undefined,
-        phone: input.phone?.trim() || undefined,
-        email: input.email?.trim() || undefined,
-        address: input.address?.trim() || undefined,
-        notes: input.notes?.trim() || undefined,
-        createdAt: now,
-        updatedAt: now,
-      };
-      await suppliersDB.save(supplier);
-      await refresh();
-      return supplier;
+      try {
+        const supplier = await suppliersRepo.create({ ...input, name });
+        // Optimistic local update; Realtime will reconcile across clients.
+        setSuppliers((prev) =>
+          [...prev.filter((s) => s.id !== supplier.id), supplier].sort((a, b) =>
+            a.name.localeCompare(b.name)
+          )
+        );
+        return supplier;
+      } catch (e) {
+        if (e instanceof SupplierConflictError) return null; // DB unique-name guard
+        console.error('addSupplier error:', e);
+        return null;
+      }
     },
-    [nameExists, refresh]
+    [nameExists]
   );
 
   const addSupplierByName = useCallback(
@@ -111,32 +115,33 @@ export function SupplierProvider({ children }: { children: React.ReactNode }) {
       if (!name) return false;
       if (nameExists(name, id)) return false;
 
-      const existing = await suppliersDB.get(id);
-      if (!existing) return false;
-
-      const updated: Supplier = {
-        ...existing,
-        name,
-        contactPerson: input.contactPerson?.trim() || undefined,
-        phone: input.phone?.trim() || undefined,
-        email: input.email?.trim() || undefined,
-        address: input.address?.trim() || undefined,
-        notes: input.notes?.trim() || undefined,
-        updatedAt: new Date().toISOString(),
-      };
-      await suppliersDB.save(updated);
-      await refresh();
-      return true;
+      try {
+        const updated = await suppliersRepo.update(id, { ...input, name });
+        setSuppliers((prev) =>
+          prev.map((s) => (s.id === id ? updated : s)).sort((a, b) =>
+            a.name.localeCompare(b.name)
+          )
+        );
+        return true;
+      } catch (e) {
+        if (e instanceof SupplierConflictError) return false;
+        console.error('updateSupplier error:', e);
+        return false;
+      }
     },
-    [nameExists, refresh]
+    [nameExists]
   );
 
   const deleteSupplier = useCallback(
     async (id: string) => {
-      await suppliersDB.delete(id);
-      await refresh();
+      try {
+        await suppliersRepo.remove(id);
+        setSuppliers((prev) => prev.filter((s) => s.id !== id));
+      } catch (e) {
+        console.error('deleteSupplier error:', e);
+      }
     },
-    [refresh]
+    []
   );
 
   const findByName = useCallback(

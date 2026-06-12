@@ -16,7 +16,9 @@ export type Database = {
         };
         Insert: Omit<Database['public']['Tables']['inventory_snapshots']['Row'], 'id' | 'created_at'>;
         Update: Partial<Database['public']['Tables']['inventory_snapshots']['Insert']>;
+        Relationships: [];
       };
+
       inventory_products: {
         Row: {
           id: string;
@@ -31,6 +33,7 @@ export type Database = {
         };
         Insert: Omit<Database['public']['Tables']['inventory_products']['Row'], 'id'>;
         Update: Partial<Database['public']['Tables']['inventory_products']['Insert']>;
+        Relationships: [];
       };
       confirmed_orders: {
         Row: {
@@ -43,6 +46,7 @@ export type Database = {
         };
         Insert: Omit<Database['public']['Tables']['confirmed_orders']['Row'], 'id'>;
         Update: Partial<Database['public']['Tables']['confirmed_orders']['Insert']>;
+        Relationships: [];
       };
       order_items: {
         Row: {
@@ -58,18 +62,61 @@ export type Database = {
         };
         Insert: Omit<Database['public']['Tables']['order_items']['Row'], 'id'>;
         Update: Partial<Database['public']['Tables']['order_items']['Insert']>;
+        Relationships: [];
+      };
+      suppliers: {
+        Row: {
+          id: string;
+          name: string;
+          contact_person: string | null;
+          phone: string | null;
+          email: string | null;
+          address: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          contact_person?: string | null;
+          phone?: string | null;
+          email?: string | null;
+          address?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: Partial<Database['public']['Tables']['suppliers']['Insert']>;
+        Relationships: [];
       };
       product_settings: {
         Row: {
-          id: string;
           clave: string;
-          stock_objetivo: number;
+          min_stock_units: number;
+          min_stock_cases: number;
+          units_per_case_override: number | null;
+          notes: string | null;
           updated_at: string;
           updated_by: string | null;
         };
-        Insert: Omit<Database['public']['Tables']['product_settings']['Row'], 'id' | 'updated_at'>;
+        Insert: {
+          clave: string;
+          min_stock_units?: number;
+          min_stock_cases?: number;
+          units_per_case_override?: number | null;
+          notes?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
         Update: Partial<Database['public']['Tables']['product_settings']['Insert']>;
+        Relationships: [];
       };
+
       profiles: {
         Row: {
           id: string;
@@ -80,6 +127,7 @@ export type Database = {
         };
         Insert: { id?: string } & Omit<Database['public']['Tables']['profiles']['Row'], 'id' | 'created_at'>;
         Update: Partial<{ id?: string } & Omit<Database['public']['Tables']['profiles']['Row'], 'created_at'>>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
