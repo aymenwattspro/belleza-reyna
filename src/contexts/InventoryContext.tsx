@@ -2,6 +2,10 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { inventoryDB, SmartSaveResult } from '@/lib/db/inventory-db';
+import type { ImportMeta, CurrentInventoryItem, StockHistoryEntry } from '@/lib/db/inventory-db';
+import { inventoryRepo } from '@/lib/supabase/repos/inventory-repo';
+import { subscribeTable } from '@/lib/supabase/realtime';
+import { useAuth } from '@/contexts/AuthContext';
 import { InventorySnapshot, ProductSnapshot } from '@/lib/types/inventory-timeline';
 
 // ── Popularity / behaviour score ─────────────────────────────────────────────
@@ -51,6 +55,8 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   // Full current inventory (one row per unique product, with lastUpdatedDate)
   const [latestSnapshot, setLatestSnapshot] = useState<InventorySnapshot | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const { approved } = useAuth();
 
   // ── Popularity scores ──────────────────────────────────────────────────────
   // Uses normalised daily velocity: stockDrop / daysBetweenImports
@@ -153,19 +159,28 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const refreshData = useCallback(async () => {
     try {
       setLoading(true);
-      await inventoryDB.init();
 
-      // One-time migration of existing snapshots/products → new stores
-      await inventoryDB.migrateToV3IfNeeded();
+      // Supabase is the single source of truth; IndexedDB is only an offline cache.
+      let importsList: ImportMeta[];
+      let currentItems: CurrentInventoryItem[];
+      let allHistory: StockHistoryEntry[];
 
-      // ── Load import metadata ─────────────────────────────────────────────
-      const importsList = await inventoryDB.getImports();
-
-      // ── Load current inventory ───────────────────────────────────────────
-      const currentItems = await inventoryDB.getCurrentInventory();
-
-      // ── Load all stock history for virtual snapshots ─────────────────────
-      const allHistory = await inventoryDB.getAllStockHistoryItems();
+      if (inventoryRepo.isAvailable()) {
+        [importsList, currentItems, allHistory] = await Promise.all([
+          inventoryRepo.getImports(),
+          inventoryRepo.getCurrentInventory(),
+          inventoryRepo.getAllStockHistory(),
+        ]);
+      } else {
+        // Offline fallback — read the local IndexedDB cache.
+        await inventoryDB.init();
+        await inventoryDB.migrateToV3IfNeeded();
+        [importsList, currentItems, allHistory] = await Promise.all([
+          inventoryDB.getImports(),
+          inventoryDB.getCurrentInventory(),
+          inventoryDB.getAllStockHistoryItems(),
+        ]);
+      }
 
       // ── Build latestSnapshot from current_inventory ──────────────────────
       if (currentItems.length > 0) {
@@ -241,7 +256,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     snapshot: InventorySnapshot,
     _fileHash?: string,
   ): Promise<SmartSaveResult> => {
-    const result = await inventoryDB.saveSnapshot({
+    const cachePayload = {
       id: snapshot.id,
       timestamp: snapshot.timestamp,
       date: snapshot.date.toISOString(),
@@ -249,7 +264,19 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       supplierName: snapshot.supplierName,
       fileHash: snapshot.fileHash ?? _fileHash,
       products: snapshot.products,
-    });
+    };
+
+    let result: SmartSaveResult;
+    if (inventoryRepo.isAvailable()) {
+      // Supabase = source of truth (chunked begin → import → finalize).
+      result = await inventoryRepo.importInventory(snapshot);
+      // Best-effort mirror into the local IndexedDB offline cache (non-blocking).
+      void inventoryDB.saveSnapshot(cachePayload).catch(() => {});
+    } else {
+      // Offline → IndexedDB is the only store.
+      result = await inventoryDB.saveSnapshot(cachePayload);
+    }
+
     await refreshData();
     return result;
   }, [refreshData]);
@@ -257,20 +284,30 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   // ── checkFileDuplicate (now async) ─────────────────────────────────────────
 
   const checkFileDuplicate = useCallback(async (fileHash: string): Promise<boolean> => {
+    if (inventoryRepo.isAvailable()) return inventoryRepo.isFileDuplicate(fileHash);
     return inventoryDB.isFileDuplicate(fileHash);
   }, []);
 
   // ── deleteSnapshot ─────────────────────────────────────────────────────────
 
   const deleteSnapshot = useCallback(async (snapshotId: string) => {
-    await inventoryDB.deleteSnapshot(snapshotId);
+    if (inventoryRepo.isAvailable()) {
+      await inventoryRepo.deleteImport(snapshotId);
+      void inventoryDB.deleteSnapshot(snapshotId).catch(() => {});
+    } else {
+      await inventoryDB.deleteSnapshot(snapshotId);
+    }
     await refreshData();
   }, [refreshData]);
 
   // ── clearAllData ───────────────────────────────────────────────────────────
 
   const clearAllData = useCallback(async () => {
-    await inventoryDB.clearAll();
+    if (inventoryRepo.isAvailable()) {
+      await inventoryRepo.clearAll();
+    }
+    // Always clear the local offline cache too.
+    void inventoryDB.clearAll().catch(() => {});
     setSnapshots([]);
     setLatestSnapshot(null);
   }, []);
@@ -280,7 +317,13 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const updateTargetStock = useCallback(async (
     updates: Map<string, { stockObjetivo: number; piezas: number; descripcion?: string; proveedor?: string }>,
   ): Promise<number> => {
-    const count = await inventoryDB.updateTargetStock(updates);
+    let count: number;
+    if (inventoryRepo.isAvailable()) {
+      count = await inventoryRepo.updateTargetStock(updates);
+      void inventoryDB.updateTargetStock(updates).catch(() => {});
+    } else {
+      count = await inventoryDB.updateTargetStock(updates);
+    }
     await refreshData();
     return count;
   }, [refreshData]);
@@ -308,8 +351,32 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   // ── Bootstrap ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    // When Supabase is configured, only approved users may read shared data
+    // (RLS enforces this server-side too). When it isn't configured, fall back
+    // to the local offline cache so the app still works.
+    if (!approved && inventoryRepo.isAvailable()) {
+      // Legitimate React↔external (auth) sync, so the set-state-in-effect
+      // rule is intentionally suppressed here (mirrors OrderContext).
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setSnapshots([]);
+      setLatestSnapshot(null);
+      setLoading(false);
+      /* eslint-enable react-hooks/set-state-in-effect */
+      return;
+    }
     refreshData();
-  }, [refreshData]);
+  }, [approved, refreshData]);
+
+  // ── Realtime: re-sync whenever inventory changes on any client ─────────────
+  useEffect(() => {
+    if (!approved) return;
+    const unsubs = [
+      subscribeTable('imports', refreshData),
+      subscribeTable('current_inventory', refreshData),
+      subscribeTable('stock_history', refreshData),
+    ];
+    return () => unsubs.forEach((u) => u());
+  }, [approved, refreshData]);
 
   return (
     <InventoryContext.Provider
