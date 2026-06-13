@@ -620,6 +620,7 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
 
         activityRepo.log('draft.create', 'order', draft.id, {
           name: draft.name,
+          supplier: supplierName,
           products: items.length,
           value: items.reduce((s, i) => s + i.lineTotal, 0),
         });
@@ -689,7 +690,8 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         await ordersRepo.updateDraft(updated);
         activityRepo.log('draft.add', 'order', draftId, {
           name: updated.name,
-          added: newItems.length,
+          count: newItems.length,
+          added: newItems.map((i) => ({ ref: i.clave, name: i.descripcion, qty: i.unitsToOrder })),
         });
         await refreshDrafts();
 
@@ -712,12 +714,37 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
   const updateDraft = useCallback(
     async (draft: DraftOrder) => {
       try {
+        // Read the previous state first so we can describe exactly what changed.
+        const prev = await ordersRepo.getDraftOrder(draft.id);
         const next = recomputeDraft(draft);
         await ordersRepo.updateDraft(next);
+
+        const prevMap = new Map((prev?.items ?? []).map((i) => [i.clave, i]));
+        const nextMap = new Map(next.items.map((i) => [i.clave, i]));
+        const added = next.items
+          .filter((i) => !prevMap.has(i.clave))
+          .map((i) => ({ ref: i.clave, name: i.descripcion, qty: i.unitsToOrder }));
+        const removed = (prev?.items ?? [])
+          .filter((i) => !nextMap.has(i.clave))
+          .map((i) => ({ ref: i.clave, name: i.descripcion }));
+        const qty_changes = next.items
+          .filter((i) => prevMap.has(i.clave) && prevMap.get(i.clave)!.unitsToOrder !== i.unitsToOrder)
+          .map((i) => ({
+            ref: i.clave,
+            name: i.descripcion,
+            from: prevMap.get(i.clave)!.unitsToOrder,
+            to: i.unitsToOrder,
+          }));
+        const renamed = prev && prev.name !== next.name ? { from: prev.name, to: next.name } : undefined;
+
         activityRepo.log('draft.update', 'order', next.id, {
           name: next.name,
           products: next.totalProducts,
           value: next.totalValue,
+          ...(added.length ? { added } : {}),
+          ...(removed.length ? { removed } : {}),
+          ...(qty_changes.length ? { qty_changes } : {}),
+          ...(renamed ? { renamed } : {}),
         });
         // Refresh drafts and rebuild the live order: products added to the
         // pending order disappear, products removed from it reappear (if still
