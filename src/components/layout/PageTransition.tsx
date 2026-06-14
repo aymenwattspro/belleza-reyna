@@ -84,10 +84,23 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
       variants={VARIANTS[kind]}
       initial="initial"
       animate="animate"
-      style={{ willChange: 'transform, opacity' }}
+      // ⚠️ Do NOT set a persistent `will-change: transform` here.
+      //   1. `will-change: transform` keeps this element permanently promoted to
+      //      its own GPU layer, which re-rasterizes text and makes the whole page
+      //      look slightly blurry / "lower resolution" than the sidebar.
+      //   2. Per the CSS spec, `will-change: transform` makes this element a
+      //      *containing block* for `position: fixed` descendants. Because this
+      //      wrapper is `min-h-screen` (often taller than the viewport), any
+      //      `fixed inset-0` modal inside a page would stretch across the full
+      //      document and center its dialog far down the page — appearing
+      //      "hidden". Letting Framer Motion manage will-change only *during* the
+      //      transition (and reset transform to `none` once settled) keeps modals
+      //      anchored to the viewport and text crisp.
       className="min-h-screen"
     >
       {children}
     </motion.div>
   );
 }
+
+
