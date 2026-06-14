@@ -20,8 +20,9 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { ActivityEntry, ActorProfile, UserActivityStats } from '@/lib/supabase/repos/activity-repo';
-import { describeDevice, describeLocation } from '@/lib/audit/context';
-import { describe, userColor, initials, useActivityLabel } from './shared';
+import { describeLocation, deviceFromUserAgent } from '@/lib/audit/context';
+import { describe, userColor, initials, useActivityLabel, metaKeyLabel, ChangeDetails } from './shared';
+
 
 // ── Small atoms ───────────────────────────────────────────────────────────────
 export function SectionCard({
@@ -175,8 +176,14 @@ export function FieldDiff({ metadata }: { metadata: Record<string, unknown> }) {
 // ── Technical Information ────────────────────────────────────────────────────
 export function TechnicalInfo({ entry }: { entry: ActivityEntry }) {
   const { t } = useLanguage();
-  const device = entry.device;
   const geo = entry.geo;
+
+  // Prefer the structured device jsonb; otherwise derive it from the user-agent
+  // (server-RPC-logged actions only carry the raw UA, not the parsed device).
+  const device = useMemo(
+    () => entry.device ?? deviceFromUserAgent(entry.userAgent),
+    [entry.device, entry.userAgent],
+  );
 
   const hasAny =
     entry.ipAddress || entry.userAgent || entry.sessionId || entry.source ||
@@ -186,28 +193,25 @@ export function TechnicalInfo({ entry }: { entry: ActivityEntry }) {
     return <EmptyState title={t('act_no_tech_info')} hint={t('act_no_tech_hint')} />;
   }
 
-  const deviceLabel = describeDevice(device);
-
   return (
     <div className="space-y-0.5">
       {entry.source && <InfoRow label={t('act_source')}>{entry.source}</InfoRow>}
       {entry.ipAddress && <InfoRow label={t('act_ip')} mono>{entry.ipAddress}</InfoRow>}
-      {device?.browser && (
+      {device?.browser && device.browser !== 'Unknown' && (
         <InfoRow label={t('act_browser')}>
           {device.browser}{device.browserVersion ? ` ${device.browserVersion}` : ''}
         </InfoRow>
       )}
-      {device?.os && (
+      {device?.os && device.os !== 'Unknown' && (
         <InfoRow label={t('act_os')}>
           {device.os}{device.osVersion ? ` ${device.osVersion}` : ''}
         </InfoRow>
       )}
-      {device?.deviceType && (
+      {device?.deviceType && device.deviceType !== 'unknown' && (
         <InfoRow label={t('act_device_type')}>
           <span className="capitalize">{device.deviceType}</span>
         </InfoRow>
       )}
-      {!device && deviceLabel && <InfoRow label={t('act_device')}>{deviceLabel}</InfoRow>}
       {geo?.timezone && <InfoRow label={t('act_timezone')}>{geo.timezone}</InfoRow>}
       {entry.sessionId && <InfoRow label={t('act_session')} mono>{entry.sessionId}</InfoRow>}
       {entry.userAgent && (
@@ -218,6 +222,7 @@ export function TechnicalInfo({ entry }: { entry: ActivityEntry }) {
     </div>
   );
 }
+
 
 // ── Location block (Overview) ────────────────────────────────────────────────
 export function LocationBlock({ entry }: { entry: ActivityEntry }) {
@@ -263,11 +268,16 @@ type Severity = 'low' | 'medium' | 'high';
 type RiskSignal = { key: string; labelKey: string; severity: Severity };
 type RiskLevel = 'none' | 'low' | 'medium' | 'high' | 'insufficient';
 
+// Effective device for a row: structured jsonb, else parsed from the user-agent.
+function effectiveDevice(e: ActivityEntry) {
+  return e.device ?? deviceFromUserAgent(e.userAgent);
+}
+
 export function computeRisk(entry: ActivityEntry, history: ActivityEntry[]): {
   level: RiskLevel;
   signals: RiskSignal[];
 } {
-  const device = entry.device;
+  const device = effectiveDevice(entry);
   const geo = entry.geo;
 
   // No audit context on this record → we cannot assess (don't fabricate).
@@ -275,16 +285,17 @@ export function computeRisk(entry: ActivityEntry, history: ActivityEntry[]): {
   if (!hasContext) return { level: 'insufficient', signals: [] };
 
   // Only compare against history rows that actually carry audit context.
-  const priors = history.filter((h) => h.device || h.geo || h.ipAddress);
+  const priors = history.filter((h) => h.device || h.geo || h.ipAddress || h.userAgent);
 
   const signals: RiskSignal[] = [];
 
   if (priors.length > 0) {
-    const browsers = new Set(priors.map((h) => h.device?.browser).filter(Boolean));
-    const oses = new Set(priors.map((h) => h.device?.os).filter(Boolean));
-    const devices = new Set(priors.map((h) => h.device?.deviceType).filter(Boolean));
+    const browsers = new Set(priors.map((h) => effectiveDevice(h)?.browser).filter(Boolean));
+    const oses = new Set(priors.map((h) => effectiveDevice(h)?.os).filter(Boolean));
+    const devices = new Set(priors.map((h) => effectiveDevice(h)?.deviceType).filter(Boolean));
     const countries = new Set(priors.map((h) => h.geo?.country).filter(Boolean));
     const cities = new Set(priors.map((h) => h.geo?.city).filter(Boolean));
+
 
     if (device?.browser && browsers.size > 0 && !browsers.has(device.browser)) {
       signals.push({ key: 'browser', labelKey: 'act_signal_new_browser', severity: 'medium' });
@@ -496,7 +507,94 @@ export function EntityTimeline({ entries, currentId }: { entries: ActivityEntry[
   );
 }
 
+// ── Change Summary (human-friendly) ──────────────────────────────────────────
+const SUMMARY_HIDE = new Set([
+  'added', 'removed', 'qty_changes', 'renamed', 'changes', 'before', 'after',
+  'draft_id', 'request_id', 'session_id', 'import_id',
+]);
+const SUBTITLE_KEYS = ['file_name', 'name', 'supplier_name', 'supplier'];
+
+function formatStatValue(key: string, v: unknown): string {
+  const num = Number(v);
+  if (key.toLowerCase().includes('value') && !Number.isNaN(num)) {
+    return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+  }
+  if (typeof v !== 'boolean' && v !== '' && !Number.isNaN(num)) {
+    return num.toLocaleString();
+  }
+  return String(v);
+}
+
+/**
+ * A clean, human-readable summary of an activity's metadata: an optional subtitle
+ * (file / name), formatted stat tiles for numeric keys, and the structured
+ * change blocks (added / removed / qty / renamed) underneath.
+ */
+export function ChangeSummary({ entry }: { entry: ActivityEntry }) {
+  const { t, lang } = useLanguage();
+  const m = entry.metadata ?? {};
+
+  const FRIENDLY: Record<string, string> = {
+    product_count: t('act_lbl_products'),
+    count: t('act_lbl_products'),
+    products: t('act_lbl_products'),
+    new: t('import_new'),
+    updated: t('import_updated'),
+    unchanged: t('import_unchanged'),
+    value: t('act_lbl_value'),
+    total_value: t('act_lbl_value'),
+    units: t('act_lbl_units'),
+  };
+
+  const subtitleKey = SUBTITLE_KEYS.find((k) => m[k] != null && m[k] !== '');
+  const subtitle = subtitleKey ? String(m[subtitleKey]) : null;
+
+  const stats = Object.entries(m).filter(([k, v]) => {
+    if (SUMMARY_HIDE.has(k) || k === subtitleKey) return false;
+    return v !== null && v !== undefined && v !== '' && typeof v !== 'object';
+  });
+
+  const hasStructured =
+    Array.isArray(m.added) || Array.isArray(m.removed) ||
+    Array.isArray(m.qty_changes) || (m.renamed != null && typeof m.renamed === 'object');
+
+  if (!subtitle && stats.length === 0 && !hasStructured) {
+    return <p className="text-sm text-gray-400 text-center py-2">{t('act_no_change_summary')}</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {subtitle && (
+        <p className="text-sm text-gray-700">
+          <span className="text-gray-400">
+            {subtitleKey === 'file_name' ? t('act_lbl_file') : metaKeyLabel(subtitleKey as string, lang)}:{' '}
+          </span>
+          <span className="font-medium break-words">{subtitle}</span>
+        </p>
+      )}
+
+      {stats.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {stats.map(([k, v]) => (
+            <div key={k} className="rounded-xl bg-gray-50 px-3 py-2">
+              <p className="text-base font-bold text-gray-800 tabular-nums leading-tight">{formatStatValue(k, v)}</p>
+              <p className="text-[11px] text-gray-400 capitalize leading-tight mt-0.5">
+                {FRIENDLY[k] ?? metaKeyLabel(k, lang)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Structured changes — scalar chips are intentionally suppressed (shown as tiles above). */}
+      <ChangeDetails metadata={m} showScalars={false} />
+    </div>
+  );
+}
+
 // Re-export icons used by the page for convenience.
 export const DetailIcons = {
   Monitor, Globe, Hash, Database, ShieldCheck, MapPin, Fingerprint, ArrowRight, Server, Smartphone, Clock,
 };
+
+

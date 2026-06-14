@@ -133,9 +133,14 @@ const DICT = {
     act_view_details: 'View details',
     act_load_more: 'Load more',
     act_created: 'Created',
+    act_lbl_products: 'Products',
+    act_lbl_value: 'Value',
+    act_lbl_units: 'Units',
+    act_lbl_file: 'File',
 
     // ── Supplier management ──
     sup_manage_hint: 'Manage your permanent supplier list. Saved suppliers can be reused in every order.',
+
     sup_add: 'Add Supplier',
     sup_edit: 'Edit Supplier',
     sup_new: 'New Supplier',
@@ -697,9 +702,14 @@ const DICT = {
     act_view_details: 'Ver detalles',
     act_load_more: 'Cargar más',
     act_created: 'Creado',
+    act_lbl_products: 'Productos',
+    act_lbl_value: 'Valor',
+    act_lbl_units: 'Unidades',
+    act_lbl_file: 'Archivo',
 
     // ── Supplier management ──
     sup_manage_hint: 'Administra tu lista permanente de proveedores. Los proveedores guardados se pueden reutilizar en cada pedido.',
+
     sup_add: 'Agregar Proveedor',
     sup_edit: 'Editar Proveedor',
     sup_new: 'Nuevo Proveedor',

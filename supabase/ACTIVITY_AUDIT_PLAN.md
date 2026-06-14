@@ -55,11 +55,20 @@ It:
 5. Ensures `audit_log` is in the `supabase_realtime` publication (live feed).
 
 ### How to apply
-Run it once in **Supabase → SQL Editor** (safe to re-run; idempotent):
+Run **both** files once in **Supabase → SQL Editor** (safe to re-run; idempotent):
 
 ```sql
--- paste the contents of supabase/migrations/007_activity_audit_metadata.sql
+-- 1) paste the contents of supabase/migrations/007_activity_audit_metadata.sql
+-- 2) paste the contents of supabase/migrations/008_audit_request_headers.sql
 ```
+
+**Migration 008** upgrades `log_audit` to also read the **User-Agent + client IP +
+source from PostgREST's `request.headers`**. This means *server-initiated* audits
+(imports, target-stock updates, order/draft confirmations) — which can't send a
+client context — now still record `user_agent`, `ip_address` and `source`. The UI
+parses the browser / OS / device from the user-agent when the structured `device`
+jsonb is absent. (City/region geo still only comes from client context.)
+
 
 ### Rollout order / safety
 - The frontend is **backward compatible**: `activityRepo.log()` first calls
