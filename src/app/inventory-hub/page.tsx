@@ -54,15 +54,18 @@ type ImportMode = 'snapshot' | 'targetstock';
 interface GuidedImportProps {
   preview: ParsePreview;
   supplierName: string;
+  isImporting: boolean;
   onConfirm: (mapping: ColMapping, supplier: string, mode: ImportMode) => void;
   onCancel: () => void;
 }
+
 
 const DEFAULT_SUPPLIER_NAMES = [
   'General', 'Pink Up', 'Beauty Creations', 'Bissu', 'Prosa', 'Vogue', 'Maybelline', "L'Oreal", 'NYX',
 ];
 
-function GuidedImportModal({ preview, supplierName, onConfirm, onCancel }: GuidedImportProps) {
+function GuidedImportModal({ preview, supplierName, isImporting, onConfirm, onCancel }: GuidedImportProps) {
+
   const { t } = useLanguage();
   const { suppliers } = useSuppliers();
   const [importMode, setImportMode] = useState<ImportMode>('snapshot');
@@ -113,6 +116,14 @@ function GuidedImportModal({ preview, supplierName, onConfirm, onCancel }: Guide
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      {/* Loading overlay — shown while the import is being written to the
+          database so the user gets clear feedback instead of a frozen modal. */}
+      {isImporting && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-white/80 backdrop-blur-sm">
+          <RefreshCw className="w-9 h-9 text-pink-500 animate-spin" />
+          <p className="text-sm font-semibold text-gray-700">{t('import_loading')}</p>
+        </div>
+      )}
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
@@ -121,8 +132,9 @@ function GuidedImportModal({ preview, supplierName, onConfirm, onCancel }: Guide
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">~{estimatedCount} {t('import_products_ready')}</p>
           </div>
-          <button onClick={onCancel} className="p-2 hover:bg-gray-100 rounded-lg"><X size={18} className="text-gray-500" /></button>
+          <button onClick={onCancel} disabled={isImporting} className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"><X size={18} className="text-gray-500" /></button>
         </div>
+
 
         <div className="p-6 space-y-5">
           <div>
@@ -242,17 +254,19 @@ function GuidedImportModal({ preview, supplierName, onConfirm, onCancel }: Guide
         </div>
 
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
-          <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">{t('cancel')}</button>
+          <button onClick={onCancel} disabled={isImporting} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed">{t('cancel')}</button>
           <button
             onClick={() => {
               const effectiveMapping = importMode === 'targetstock' ? { ...mapping, existenciaIdx: -1 } : mapping;
               onConfirm(effectiveMapping, effectiveSupplier, importMode);
             }}
-            disabled={estimatedCount === 0}
-            className="px-5 py-2 bg-pink-500 text-white text-sm font-semibold rounded-xl hover:bg-pink-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-            {t('import')} {estimatedCount}
+            disabled={estimatedCount === 0 || isImporting}
+            className="px-5 py-2 bg-pink-500 text-white text-sm font-semibold rounded-xl hover:bg-pink-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2">
+            {isImporting && <RefreshCw size={14} className="animate-spin" />}
+            {isImporting ? t('import_loading') : `${t('import')} ${estimatedCount}`}
           </button>
         </div>
+
       </div>
     </div>
   );
@@ -444,9 +458,11 @@ export default function InventoryHubPage() {
         <GuidedImportModal
           preview={preview}
           supplierName={pendingSupplier}
+          isImporting={isImporting}
           onConfirm={handleConfirmImport}
           onCancel={() => setPreview(null)}
         />
+
       )}
 
       {/* Page Header */}
