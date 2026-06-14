@@ -4,7 +4,9 @@ import React, { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Toaster } from 'sonner';
 import { Sidebar } from './Sidebar';
+import { PageTransition } from './PageTransition';
 import { ChatWidget } from '@/components/chatbot/ChatWidget';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -108,8 +110,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex-1 ml-64 min-h-screen">
         {/* key={lang} forces remount on language change so all useMemo'd
-            translations refresh — guarantees 100% translation accuracy. */}
-        <main key={lang} className="min-h-screen">{children}</main>
+            translations refresh — guarantees 100% translation accuracy.
+            PageTransition adds a subtle fade/slide on route changes. */}
+        <main key={lang} className="min-h-screen">
+          <PageTransition>{children}</PageTransition>
+        </main>
+
       </div>
       <ChatWidget />
       <Toaster position="top-right" richColors expand closeButton />
