@@ -353,6 +353,14 @@ export type Database = {
           actor_email: string | null;
           metadata: Json;
           created_at: string;
+          // ── Audit metadata (migration 007 — all nullable) ──
+          session_id: string | null;
+          request_id: string | null;
+          source: string | null;
+          user_agent: string | null;
+          ip_address: string | null;
+          geo: Json | null;
+          device: Json | null;
         };
         Insert: {
           id?: number;
@@ -363,6 +371,13 @@ export type Database = {
           actor_email?: string | null;
           metadata?: Json;
           created_at?: string;
+          session_id?: string | null;
+          request_id?: string | null;
+          source?: string | null;
+          user_agent?: string | null;
+          ip_address?: string | null;
+          geo?: Json | null;
+          device?: Json | null;
         };
         Update: Partial<Database['public']['Tables']['audit_log']['Insert']>;
         Relationships: [];
@@ -397,12 +412,22 @@ export type Database = {
         Args: { user_id: string };
         Returns: boolean;
       };
+      get_actor_profile: {
+        Args: { p_actor_id: string };
+        Returns: {
+          id: string;
+          email: string | null;
+          role: string;
+          created_at: string;
+        }[];
+      };
       log_audit: {
         Args: {
           p_action: string;
           p_entity_type: string;
           p_entity_id?: string;
           p_metadata?: Json;
+          p_context?: Json;
         };
         Returns: undefined;
       };
