@@ -108,7 +108,13 @@ export function asArray<T>(v: unknown): T[] | null {
 }
 
 // ── Detailed change renderer (chips + added/removed/qty/renamed) ─────────────
-export function ChangeDetails({ metadata }: { metadata: Record<string, unknown> }) {
+export function ChangeDetails({
+  metadata,
+  showScalars = true,
+}: {
+  metadata: Record<string, unknown>;
+  showScalars?: boolean;
+}) {
   const { t, lang } = useLanguage();
   const m = metadata ?? {};
   const added = asArray<AddedItem>(m.added);
@@ -117,9 +123,11 @@ export function ChangeDetails({ metadata }: { metadata: Record<string, unknown> 
   const renamed = (m.renamed && typeof m.renamed === 'object' ? m.renamed : null) as Renamed | null;
 
   const structuredKeys = new Set(['added', 'removed', 'qty_changes', 'renamed', 'count']);
-  const scalar = Object.entries(m).filter(
-    ([k, v]) => !structuredKeys.has(k) && v !== null && v !== undefined && v !== '' && typeof v !== 'object'
-  );
+  const scalar = showScalars
+    ? Object.entries(m).filter(
+        ([k, v]) => !structuredKeys.has(k) && v !== null && v !== undefined && v !== '' && typeof v !== 'object'
+      )
+    : [];
 
   const hasAnything = scalar.length || added?.length || removed?.length || qty?.length || renamed;
   if (!hasAnything) return null;
@@ -130,6 +138,7 @@ export function ChangeDetails({ metadata }: { metadata: Record<string, unknown> 
     <div className="mt-2 space-y-1.5">
       {/* Scalar chips */}
       {scalar.length > 0 && (
+
         <div className="flex flex-wrap gap-1.5">
           {scalar.map(([k, v]) => {
             let val = String(v);

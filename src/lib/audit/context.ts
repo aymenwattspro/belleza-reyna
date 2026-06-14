@@ -201,8 +201,22 @@ type GeoLike = {
   city?: string | null;
 };
 
+/**
+ * Parse a raw user-agent string into a device object. Exposed so the UI can
+ * derive browser/OS/device for activity rows that only have `user_agent`
+ * (e.g. server-RPC-logged actions) and not the structured `device` jsonb.
+ */
+export function deviceFromUserAgent(ua: string | null | undefined): AuditDevice | null {
+  if (!ua) return null;
+  const d = parseDevice(ua);
+  // Nothing useful detected → treat as absent rather than showing "Unknown".
+  if (d.browser === 'Unknown' && d.os === 'Unknown' && d.deviceType === 'unknown') return null;
+  return d;
+}
+
 /** Format a device object into a compact label, e.g. "Chrome 124 · macOS · Desktop". */
 export function describeDevice(device: DeviceLike | null | undefined): string {
+
   if (!device) return '';
   const parts: string[] = [];
   if (device.browser && device.browser !== 'Unknown') {

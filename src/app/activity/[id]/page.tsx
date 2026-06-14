@@ -11,13 +11,14 @@ import {
   activityRepo, ActivityEntry, ActorProfile, UserActivityStats,
 } from '@/lib/supabase/repos/activity-repo';
 import {
-  describe, userColor, initials, useActivityLabel, ChangeDetails,
+  describe, userColor, initials, useActivityLabel,
 } from '@/components/activity/shared';
 import {
   SectionCard, InfoRow, FieldDiff, TechnicalInfo, AuditMetadata,
   SecurityAnalysis, UserInvestigation, HistoryRow, EntityTimeline,
-  LocationBlock, useDf,
+  LocationBlock, ChangeSummary, useDf,
 } from '@/components/activity/detail-sections';
+
 import {
   ActivityDetailSkeleton, SectionSkeleton, HistoryListSkeleton,
 } from '@/components/activity/skeletons';
@@ -255,18 +256,4 @@ export default function ActivityDetailPage({ params }: { params: Promise<{ id: s
   );
 }
 
-/** Change Summary — structured chips/added/removed, or an honest empty state. */
-function ChangeSummary({ entry }: { entry: ActivityEntry }) {
-  const { t } = useLanguage();
-  const m = entry.metadata ?? {};
-  const hasContent = m && Object.keys(m).length > 0;
 
-  if (!hasContent) {
-    return <p className="text-sm text-gray-400 text-center py-2">{t('act_no_change_summary')}</p>;
-  }
-  return (
-    <div>
-      <ChangeDetails metadata={m} />
-    </div>
-  );
-}
