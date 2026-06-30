@@ -25,7 +25,10 @@ export interface ImportMeta {
   supplierName?: string;
   fileHash?: string;
   productCount: number;
+  /** 'snapshot' = Current Inventory file, 'targetstock' = Target Stock file. */
+  importType?: 'snapshot' | 'targetstock';
 }
+
 
 export interface CurrentInventoryItem {
   clave: string;
