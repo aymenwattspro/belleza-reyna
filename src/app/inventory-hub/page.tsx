@@ -60,16 +60,20 @@ export default function InventoryHubPage() {
       const s = settingsLookup.get(p.clave);
       const effectiveMin = s?.minStockUnits || p.stockObjetivo || 0;
       const stock = Math.max(0, p.existencia);
-      const status = getStockStatus(stock, effectiveMin);
+      // Without a target stock we cannot say whether a product is in / low / out
+      // of stock — not even when stock is 0. Force "pending" so the user must
+      // attach a target before the product gets a real traffic-light status.
+      const status: 'green' | 'orange' | 'red' | 'pending' =
+        effectiveMin > 0 ? getStockStatus(stock, effectiveMin) : 'pending';
       return { ...p, effectiveMin, stock, status };
     });
   }, [latestSnapshot, getAllSettings]);
 
   const filteredInventory = useMemo(() => {
     let products = inventoryProducts;
-    if (stockFilter === 'pending') {
-      products = products.filter((p) => (p.stockObjetivo == null || p.stockObjetivo <= 0));
-    } else if (stockFilter !== 'all') {
+    // 'all' shows everything; every other chip (green/orange/red/pending) maps
+    // 1:1 to the product's computed status.
+    if (stockFilter !== 'all') {
       products = products.filter((p) => p.status === stockFilter);
     }
     if (inventorySearch.trim()) {
@@ -85,12 +89,13 @@ export default function InventoryHubPage() {
     green: inventoryProducts.filter((p) => p.status === 'green').length,
     orange: inventoryProducts.filter((p) => p.status === 'orange').length,
     red: inventoryProducts.filter((p) => p.status === 'red').length,
-    pending: inventoryProducts.filter((p) => (p.stockObjetivo == null || p.stockObjetivo <= 0)).length,
+    pending: inventoryProducts.filter((p) => p.status === 'pending').length,
     total: inventoryProducts.length,
   }), [inventoryProducts]);
 
   const exportPendingTargets = useCallback(() => {
-    const pending = inventoryProducts.filter((p) => (p.stockObjetivo == null || p.stockObjetivo <= 0));
+    const pending = inventoryProducts.filter((p) => p.status === 'pending');
+
     const rows = pending.map((p) => ({
       Reference: p.clave, Description: p.descripcion, Supplier: p.proveedor || '',
       'Current Stock': p.stock, 'Cost Price': p.precioC || '', 'Target Stock': '', 'Units per Case': p.piezas || '',

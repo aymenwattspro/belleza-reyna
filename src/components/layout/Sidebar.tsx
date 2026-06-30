@@ -6,8 +6,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home, LayoutDashboard, Users, ShoppingCart,
-  History, LogOut, Globe, FileText, Activity, Upload,
+  History, LogOut, Globe, FileText, Activity,
 } from 'lucide-react';
+
 
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -24,8 +25,8 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { labelKey: 'nav_home',          descKey: 'nav_description_home',      href: '/inventory-hub', icon: Home },
-  { labelKey: 'nav_imports',       descKey: 'nav_description_imports',    href: '/imports',       icon: Upload },
   { labelKey: 'nav_dashboard',     descKey: 'nav_description_dashboard',  href: '/dashboard',     icon: LayoutDashboard },
+
   { labelKey: 'nav_suppliers',     descKey: 'nav_description_suppliers',  href: '/suppliers',     icon: Users },
   { labelKey: 'nav_total_order',   descKey: 'nav_description_order',      href: '/orders',        icon: ShoppingCart },
   { labelKey: 'nav_pending_orders', descKey: 'nav_description_pending',   href: '/draft-orders',  icon: FileText },
