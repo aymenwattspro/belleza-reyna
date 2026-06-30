@@ -6,14 +6,17 @@ import { useRouter } from 'next/navigation';
 import {
   ShoppingCart, CheckSquare, Square, CheckCircle2,
   FileSpreadsheet, FileText, Package, Building2, Search, X, Star, Zap, ChevronDown, ChevronUp,
-  Ban, RotateCcw,
+  Ban,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useOrder, OrderLineItem } from '@/contexts/OrderContext';
+import { useOrder } from '@/contexts/OrderContext';
+
 import { useInventory } from '@/contexts/InventoryContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { DoNotOrderPanel } from '@/components/orders/DoNotOrderPanel';
+
 
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -27,10 +30,12 @@ function OrdersPageInner() {
   // single source of truth. It rebuilds the order whenever latestSnapshot changes.
   // Calling it again here (without settingsMap) produces a different count.
   const {
-    orderLines, deselectedClaves, toggleDeselect, batchToggleSelect, confirmOrder,
+    orderLines, toggleDeselect, batchToggleSelect, confirmOrder,
+
     saveDraftFromLines, addLinesToDraft, draftOrders, loading,
-    excludedProducts, excludeProduct, includeProduct,
+    excludedProducts, excludeProduct, excludeProducts,
   } = useOrder();
+
 
 
   const { latestSnapshot, loading: invLoading, popularityScores } = useInventory();
@@ -45,7 +50,8 @@ function OrdersPageInner() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [recOpen, setRecOpen] = useState(true); // recommendation panel open/collapsed
-  const [excludedOpen, setExcludedOpen] = useState(false); // "Do Not Order" panel
+  const [dnoOpen, setDnoOpen] = useState(false); // "Do Not Order" drawer open/closed
+
 
 
 
@@ -86,7 +92,7 @@ function OrdersPageInner() {
   }, [orderLines, supplierFilter, searchTerm, popularityMap]);
 
   const selected = filtered.filter((l) => l.selected);
-  const deselected = filtered.filter((l) => !l.selected);
+
 
   // Totals
   const totals = useMemo(() => {
@@ -201,9 +207,25 @@ function OrdersPageInner() {
     }
   };
 
+  // ── Bulk "Do Not Order" ───────────────────────────────────────────────────
+  // Moves every currently-selected product out of the Total Order list and into
+  // the Do Not Order list in a single action.
+  const handleBulkExclude = async () => {
+    const selectedLines = orderLines.filter((l) => l.selected);
+    if (selectedLines.length === 0) return;
+    await excludeProducts(
+      selectedLines.map((l) => ({
+        clave: l.clave,
+        descripcion: l.descripcion,
+        proveedor: l.proveedor,
+      }))
+    );
+  };
+
 
 
   // ─────────────────────────────────────────────────────────────────────────
+
   if (invLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -255,12 +277,21 @@ function OrdersPageInner() {
               <FileText size={15} className="text-amber-500" /> {t('orders_save_draft')}
             </button>
             <button
+              onClick={handleBulkExclude}
+              disabled={selected.length === 0}
+              title={t('orders_excluded_subtitle')}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 disabled:opacity-40 transition-colors"
+            >
+              <Ban size={15} className="text-rose-500" /> {t('orders_move_to_exclude')}
+            </button>
+            <button
               onClick={() => setConfirmModal(true)}
               disabled={selected.length === 0 || loading}
               className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-pink-500 to-pink-600 rounded-xl hover:from-pink-600 hover:to-pink-700 disabled:opacity-40 shadow-lg shadow-pink-500/25 transition-all"
             >
               <CheckCircle2 size={15} /> {t('orders_confirm')}
             </button>
+
           </div>
         </div>
       </div>
@@ -332,48 +363,8 @@ function OrdersPageInner() {
         </div>
       </div>
 
-      {/* ── Do Not Order list (permanently excluded products) ──
-          Shown at the TOP of the page so the status of excluded products is
-          always visible without scrolling to the bottom.
-      ────────────────────────────────────────────────────────────────────── */}
-      {excludedProducts.length > 0 && (
-        <div className="mx-6 mt-4 rounded-2xl border border-red-100 bg-red-50/40 overflow-hidden">
-          <button
-            onClick={() => setExcludedOpen((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-red-50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Ban size={15} className="text-red-500" />
-              <span className="text-sm font-semibold text-red-700">{t('orders_excluded_title')}</span>
-              <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">
-                {excludedProducts.length}
-              </span>
-              <span className="hidden sm:inline text-xs text-red-400">— {t('orders_excluded_subtitle')}</span>
-            </div>
-            {excludedOpen ? <ChevronUp size={14} className="text-red-400" /> : <ChevronDown size={14} className="text-red-400" />}
-          </button>
-          {excludedOpen && (
-            <div className="px-5 pb-4 space-y-2">
-              {excludedProducts.map((p) => (
-                <div key={p.clave} className="flex items-center justify-between bg-white rounded-xl border border-red-100 px-4 py-2.5">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{p.descripcion}</p>
-                    <p className="text-[11px] text-gray-400 font-mono">{p.clave} · {p.proveedor}</p>
-                  </div>
-                  <button
-                    onClick={() => includeProduct(p.clave)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors shrink-0"
-                  >
-                    <RotateCcw size={13} /> {t('orders_reenable')}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── Priority Recommendation Banner ──────────────────────────────────
+
 
           Shows the top products from the current order ranked by popularity.
           This is a SUGGESTION only — no product is forced in or out.
@@ -710,12 +701,37 @@ function OrdersPageInner() {
           </div>
         </div>
       )}
+
+      {/* ── Floating "Do Not Order" tab — always accessible ──────────────────
+          A thin handle anchored to the right edge that opens the Do Not Order
+          drawer from anywhere on the page without cluttering the layout. */}
+      {!dnoOpen && (
+        <button
+          onClick={() => setDnoOpen(true)}
+          title={t('orders_excluded_open')}
+          className="fixed right-0 top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-2 rounded-l-2xl border border-r-0 border-rose-200 bg-white px-2.5 py-4 shadow-lg hover:bg-rose-50 hover:px-3 transition-all"
+        >
+          <Ban size={18} className="text-rose-500" />
+          <span className="text-[11px] font-semibold tracking-wide text-rose-700 [writing-mode:vertical-rl]">
+            {t('orders_excluded_open')}
+          </span>
+          {excludedProducts.length > 0 && (
+            <span className="min-w-[20px] rounded-full bg-rose-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+              {excludedProducts.length}
+            </span>
+          )}
+        </button>
+      )}
+
+      {/* ── Do Not Order slide-over drawer ── */}
+      <DoNotOrderPanel open={dnoOpen} onClose={() => setDnoOpen(false)} />
     </div>
   );
 }
 
 
 // Uses the global InventoryProvider already mounted in app/layout.tsx
+
 export default function OrdersPage() {
   return <OrdersPageInner />;
 }
