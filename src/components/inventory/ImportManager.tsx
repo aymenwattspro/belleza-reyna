@@ -276,7 +276,8 @@ interface ImportManagerProps {
 }
 
 export function ImportManager({ children, onImported }: ImportManagerProps) {
-  const { addSnapshot, checkFileDuplicate, updateTargetStock } = useInventory();
+  const { addSnapshot, checkFileDuplicate, updateTargetStock, recordTargetImport } = useInventory();
+
   const { addSupplierByName } = useSuppliers();
   const { t } = useLanguage();
 
@@ -326,10 +327,20 @@ export function ImportManager({ children, onImported }: ImportManagerProps) {
         });
         if (targetUpdates.size === 0) { toast.error(t('import_no_targets_detected')); return; }
         const count = await updateTargetStock(targetUpdates);
+        // Log the Target-Stock import as a first-class history event so it shows
+        // up in Import History (with the real product count + "Target" type).
+        // Best-effort: silently no-ops if migration 009 isn't applied yet.
+        await recordTargetImport({
+          fileName: `targets_${new Date().toISOString().slice(0, 10)}`,
+          supplierName: supplierLabel,
+          timestamp: Date.now(),
+          productCount: count,
+        }).catch(() => {});
         toast.success(t('import_target_success').replace('{count}', String(count)));
         setPreview(null);
         onImported?.();
         return;
+
       }
 
       const fileHash = hashProducts(products);

@@ -27,10 +27,14 @@ export default function ImportsPage() {
   const { snapshots, loading, deleteSnapshot } = useInventory();
   const { t } = useLanguage();
 
+  // Use the authoritative per-import product_count (NOT products.length, which
+  // only holds the rows whose stock changed — that under-counts re-imports and
+  // shows 0 for target-stock imports).
   const totalProducts = useMemo(
-    () => snapshots.reduce((sum, s) => sum + s.products.length, 0),
+    () => snapshots.reduce((sum, s) => sum + (s.productCount ?? s.products.length), 0),
     [snapshots],
   );
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -121,8 +125,13 @@ function ImportRow({
   const [deleting, setDeleting] = useState(false);
 
   const supplier = resolveSupplierName(snap.supplierName);
+  // Authoritative count (see InventorySnapshot.productCount). Falls back to the
+  // changed-rows length for older imports that predate product_count.
+  const count = snap.productCount ?? snap.products.length;
+  const isTarget = snap.importType === 'targetstock';
 
   const handleDelete = async () => {
+
     setDeleting(true);
     try {
       await onDelete(snap.id);
@@ -153,6 +162,12 @@ function ImportRow({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <p className="font-semibold text-gray-900 truncate">{supplier}</p>
+              <span className={cn(
+                'text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0',
+                isTarget ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600',
+              )}>
+                {isTarget ? t('import_mode_target') : t('import_mode_snapshot')}
+              </span>
               {isLatest && (
                 <span className="text-[10px] bg-pink-50 text-pink-600 px-2 py-0.5 rounded-full font-medium shrink-0">
                   {t('imports_latest')}
@@ -160,8 +175,9 @@ function ImportRow({
               )}
             </div>
             <p className="text-xs text-gray-400 truncate">
-              {format(snap.date, 'dd MMM yyyy · HH:mm')} · {snap.products.length} {t('dash_products')}
+              {format(snap.date, 'dd MMM yyyy · HH:mm')} · {count} {t('dash_products')}
             </p>
+
           </div>
         </button>
 

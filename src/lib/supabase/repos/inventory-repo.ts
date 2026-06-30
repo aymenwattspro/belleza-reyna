@@ -34,7 +34,9 @@ interface ImportRow {
   file_hash: string | null;
   product_count: number;
   imported_at: string;
+  import_type?: string | null;
 }
+
 interface CurrentInventoryRow {
   clave: string;
   descripcion: string;
@@ -73,8 +75,10 @@ function toImportMeta(r: ImportRow): ImportMeta {
     supplierName: r.supplier_name ?? undefined,
     fileHash: r.file_hash ?? undefined,
     productCount: Number(r.product_count) || 0,
+    importType: r.import_type === 'targetstock' ? 'targetstock' : 'snapshot',
   };
 }
+
 
 function toCurrentItem(r: CurrentInventoryRow): CurrentInventoryItem {
   return {
@@ -163,8 +167,10 @@ export const inventoryRepo = {
         supplier_name: snapshot.supplierName ?? null,
         file_hash: snapshot.fileHash ?? null,
         import_timestamp: snapshot.timestamp,
+        import_type: 'snapshot',
       } as Record<string, Json>,
     });
+
     if (beginErr) {
       const code = (beginErr as { code?: string }).code;
       if (code === '23505' || /DUPLICATE_IMPORT/i.test(beginErr.message ?? '')) {
@@ -202,6 +208,22 @@ export const inventoryRepo = {
   async getImports(): Promise<ImportMeta[]> {
     const supabase = getSupabaseClient();
     if (!supabase) return [];
+
+    // Try to include import_type. If migration 009 hasn't been applied yet the
+    // column won't exist (Postgres 42703) — fall back gracefully so the whole
+    // inventory view never breaks just because the type column is missing.
+    const withType = await supabase
+      .from('imports')
+      .select('id, file_name, supplier_name, file_hash, product_count, imported_at, import_type')
+      .order('imported_at', { ascending: false });
+
+    if (!withType.error) {
+      return (withType.data as ImportRow[]).map(toImportMeta);
+    }
+    if ((withType.error as { code?: string }).code !== '42703') {
+      throw withType.error;
+    }
+
     const { data, error } = await supabase
       .from('imports')
       .select('id, file_name, supplier_name, file_hash, product_count, imported_at')
@@ -209,6 +231,41 @@ export const inventoryRepo = {
     if (error) throw error;
     return (data as ImportRow[]).map(toImportMeta);
   },
+
+  /**
+   * Record a Target-Stock import as a first-class history event (so it shows up
+   * in Import History with its real product count + type), WITHOUT touching
+   * stock_history / existencia. The actual target values are written separately
+   * via updateTargetStock(). Best-effort: if the RPC isn't present yet (migration
+   * 009 not applied) the caller simply gets null and the target update still ran.
+   */
+  async recordTargetImport(meta: {
+    fileName: string;
+    supplierName?: string;
+    fileHash?: string;
+    timestamp: number;
+    productCount: number;
+  }): Promise<string | null> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc('record_target_import', {
+      p_import: {
+        file_name: meta.fileName,
+        supplier_name: meta.supplierName ?? null,
+        file_hash: meta.fileHash ?? null,
+        import_timestamp: meta.timestamp,
+        import_type: 'targetstock',
+        product_count: meta.productCount,
+      } as Record<string, Json>,
+    });
+    if (error) {
+      // Missing function (migration not applied) → don't break the import flow.
+      if ((error as { code?: string }).code === 'PGRST202') return null;
+      throw error;
+    }
+    return (data as string) ?? null;
+  },
+
 
   /** Canonical current state — one row per unique product. */
   async getCurrentInventory(): Promise<CurrentInventoryItem[]> {

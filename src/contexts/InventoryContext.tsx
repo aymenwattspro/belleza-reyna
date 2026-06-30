@@ -41,6 +41,9 @@ interface InventoryContextType {
   clearAllData: () => Promise<void>;
   checkFileDuplicate: (fileHash: string) => Promise<boolean>;
   updateTargetStock: (updates: Map<string, { stockObjetivo: number; piezas: number; descripcion?: string; proveedor?: string }>) => Promise<number>;
+  /** Record a Target-Stock import as a history event (does not touch existencia). */
+  recordTargetImport: (meta: { fileName: string; supplierName?: string; fileHash?: string; timestamp: number; productCount: number }) => Promise<void>;
+
 
   // Queries
   getProductHistory: (clave: string) => { date: Date; existencia: number }[];
@@ -238,9 +241,15 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
           fileName: imp.fileName,
           supplierName: imp.supplierName,
           fileHash: imp.fileHash,
+          // Authoritative total from the import record (NOT productsInImport.length,
+          // which only holds the products whose stock changed — that's why a
+          // re-import with no changes used to show "0 products imported").
+          productCount: imp.productCount,
+          importType: imp.importType,
           products: productsInImport,
         };
       });
+
 
       setSnapshots(virtualSnapshots);
     } catch (error) {
@@ -330,7 +339,23 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     return count;
   }, [refreshData]);
 
+  // ── recordTargetImport ─────────────────────────────────────────────────────
+  // Logs a Target-Stock import as a first-class history event so it appears in
+  // Import History with the correct product count + "Target Stock" type. It does
+  // NOT alter existencia/stock_history — the actual target values are written by
+  // updateTargetStock(). Best-effort: only runs against Supabase.
+
+  const recordTargetImport = useCallback(async (meta: {
+    fileName: string; supplierName?: string; fileHash?: string; timestamp: number; productCount: number;
+  }): Promise<void> => {
+    if (inventoryRepo.isAvailable()) {
+      await inventoryRepo.recordTargetImport(meta);
+      await refreshData();
+    }
+  }, [refreshData]);
+
   // ── getProductHistory ──────────────────────────────────────────────────────
+
   // SYNC version: reads from already-loaded virtual snapshots
   // (stock_history data is embedded in each virtualSnapshot's products)
 
@@ -393,9 +418,11 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         clearAllData,
         checkFileDuplicate,
         updateTargetStock,
+        recordTargetImport,
         getProductHistory,
         getPopularityScore,
       }}
+
     >
       {children}
     </InventoryContext.Provider>

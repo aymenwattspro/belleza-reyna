@@ -15,6 +15,9 @@ export interface ProductSnapshot {
   historyCount?: number;
 }
 
+/** What kind of file an import represents. */
+export type ImportType = 'snapshot' | 'targetstock';
+
 export interface InventorySnapshot {
   id: string;
   date: Date;
@@ -23,7 +26,16 @@ export interface InventorySnapshot {
   fileName: string;
   supplierName?: string;
   fileHash?: string; // Hash to detect duplicate imports
+  /**
+   * Authoritative number of products in this import (from imports.product_count).
+   * NOTE: `products` only contains the rows whose stock *changed*, so it must NOT
+   * be used to report "how many products were imported" — use this instead.
+   */
+  productCount?: number;
+  /** 'snapshot' = Current Inventory, 'targetstock' = Target Stock. */
+  importType?: ImportType;
 }
+
 
 export interface ProductHistory {
   clave: string;

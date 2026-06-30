@@ -58,6 +58,7 @@ export type Database = {
           supplier_name: string | null;
           file_hash: string | null;
           product_count: number;
+          import_type: string;
           imported_at: string;
           created_at: string;
           created_by: string | null;
@@ -68,10 +69,12 @@ export type Database = {
           supplier_name?: string | null;
           file_hash?: string | null;
           product_count?: number;
+          import_type?: string;
           imported_at?: string;
           created_at?: string;
           created_by?: string | null;
         };
+
         Update: Partial<Database['public']['Tables']['imports']['Insert']>;
         Relationships: [];
       };
@@ -467,7 +470,12 @@ export type Database = {
         Args: { p_import_id: string };
         Returns: Json;
       };
+      record_target_import: {
+        Args: { p_import: Json };
+        Returns: string;
+      };
     };
+
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
