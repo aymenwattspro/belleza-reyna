@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Activity, RefreshCw, Search, X, Filter, ChevronRight } from 'lucide-react';
+import { Activity, RefreshCw, Search, X, Filter, ChevronRight, ChevronDown } from 'lucide-react';
+
 import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { activityRepo, ActivityEntry } from '@/lib/supabase/repos/activity-repo';
@@ -16,8 +17,15 @@ export default function ActivityPage() {
   const dfLocale = useMemo(() => (lang === 'es' ? { locale: es } : undefined), [lang]);
   const labelOf = useActivityLabel();
 
+  const PAGE_SIZE = 200;
+
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  // How many rows we currently request from the server. Grows via "Load more"
+  // so the feed is no longer capped at a fixed number of entries.
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -27,16 +35,24 @@ export default function ActivityPage() {
   const [toDate, setToDate] = useState('');
 
   const refresh = useCallback(async () => {
-    const data = await activityRepo.getActivity(300);
-    setEntries(data);
+    // Fetch one extra row to know whether more history exists beyond `limit`.
+    const data = await activityRepo.getActivity(limit + 1);
+    setHasMore(data.length > limit);
+    setEntries(data.slice(0, limit));
     setLoading(false);
-  }, []);
+    setLoadingMore(false);
+  }, [limit]);
+
 
   useEffect(() => {
+    // Initial fetch + live subscription. This is a legitimate React↔external
+    // (Supabase) sync, so the set-state-in-effect rule is intentionally allowed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
     const unsub = subscribeTable('audit_log', refresh);
     return () => unsub();
   }, [refresh]);
+
 
   const dayLabelOf = useCallback((date: Date) => {
     if (isToday(date)) return t('act_today');
@@ -247,9 +263,30 @@ export default function ActivityPage() {
                 </div>
               </div>
             ))}
+
+            {/* Load more — fetches the next page from the server. Always shown
+                while older history exists (filters apply to loaded rows, so
+                pulling more lets you keep filtering deeper into the past). */}
+            {hasMore && (
+              <div className="flex justify-center pt-2">
+                <button
+                  onClick={() => { setLoadingMore(true); setLimit((l) => l + PAGE_SIZE); }}
+                  disabled={loadingMore}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50 transition-colors disabled:opacity-60"
+                >
+                  {loadingMore ? (
+                    <><RefreshCw size={15} className="animate-spin" /> {t('loading')}</>
+                  ) : (
+                    <><ChevronDown size={15} /> {t('act_load_more')}</>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
   );
 }
+
+

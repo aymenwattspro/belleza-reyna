@@ -53,7 +53,9 @@ export type ActLabelKey =
   | 'act_import' | 'act_delete_import' | 'act_deleted' | 'act_update_target'
   | 'act_updated' | 'act_order_confirm' | 'act_draft_confirm' | 'act_draft_create'
   | 'act_draft_update' | 'act_draft_add' | 'act_draft_delete'
-  | 'act_product_exclude' | 'act_product_include';
+  | 'act_product_exclude' | 'act_product_include'
+  | 'act_product_exclude_bulk' | 'act_product_include_bulk';
+
 
 export function describe(entry: ActivityEntry): { labelKey: ActLabelKey | null; Icon: React.ElementType; color: string } {
   const { action, entityType } = entry;
@@ -73,7 +75,10 @@ export function describe(entry: ActivityEntry): { labelKey: ActLabelKey | null; 
     case 'draft.delete': return { labelKey: 'act_draft_delete', Icon: Trash2, color: 'text-red-600 bg-red-50' };
     case 'product.exclude': return { labelKey: 'act_product_exclude', Icon: Ban, color: 'text-red-600 bg-red-50' };
     case 'product.include': return { labelKey: 'act_product_include', Icon: RotateCcw, color: 'text-emerald-600 bg-emerald-50' };
+    case 'product.exclude_bulk': return { labelKey: 'act_product_exclude_bulk', Icon: Ban, color: 'text-red-600 bg-red-50' };
+    case 'product.include_bulk': return { labelKey: 'act_product_include_bulk', Icon: RotateCcw, color: 'text-emerald-600 bg-emerald-50' };
     default: return { labelKey: null, Icon: Activity, color: 'text-gray-600 bg-gray-100' };
+
   }
 }
 

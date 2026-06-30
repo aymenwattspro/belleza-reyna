@@ -59,6 +59,11 @@ const DICT = {
     act_draft_delete: 'Deleted a pending order',
     act_product_exclude: 'Excluded a product from ordering',
     act_product_include: 'Re-enabled a product for ordering',
+    act_product_exclude_bulk: 'Moved products to Do Not Order',
+    act_product_include_bulk: 'Restored products to Total Order',
+    act_showing: 'Showing',
+
+
     act_user_all: 'All users',
     act_action_all: 'All actions',
     act_from: 'From',
@@ -644,7 +649,11 @@ const DICT = {
     act_draft_delete: 'Eliminó un pedido pendiente',
     act_product_exclude: 'Excluyó un producto de los pedidos',
     act_product_include: 'Reactivó un producto para pedidos',
+    act_product_exclude_bulk: 'Movió productos a No Pedir',
+    act_product_include_bulk: 'Restauró productos al Pedido Total',
+    act_showing: 'Mostrando',
     act_user_all: 'Todos los usuarios',
+
     act_action_all: 'Todas las acciones',
     act_from: 'Desde',
     act_to: 'Hasta',

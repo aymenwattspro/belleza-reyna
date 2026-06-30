@@ -475,12 +475,20 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
           excludedAt: now,
         }));
         await ordersRepo.excludeProducts(records);
-        for (const r of records) {
-          activityRepo.log('product.exclude', 'product', r.clave, {
-            description: r.descripcion,
-            supplier: r.proveedor,
+        // Log ONE consolidated activity entry for the whole bulk move instead of
+        // one row per product (a 300-product move = 1 entry, not 300).
+        if (records.length === 1) {
+          activityRepo.log('product.exclude', 'product', records[0].clave, {
+            description: records[0].descripcion,
+            supplier: records[0].proveedor,
+          });
+        } else {
+          activityRepo.log('product.exclude_bulk', 'product', null, {
+            count: records.length,
+            removed: records.map((r) => ({ ref: r.clave, name: r.descripcion })),
           });
         }
+
         const clavesSet = new Set(records.map((r) => r.clave));
         setExcludedProducts((prev) => [
           ...prev.filter((p) => !clavesSet.has(p.clave)),
@@ -503,10 +511,21 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
       if (claves.length === 0) return;
       try {
         await ordersRepo.includeProducts(claves);
-        for (const clave of claves) {
-          activityRepo.log('product.include', 'product', clave);
+        // Log ONE consolidated activity entry for the whole bulk restore instead
+        // of one row per product. Resolve names from the current excluded list.
+        const nameByClave = new Map(excludedProducts.map((p) => [p.clave, p.descripcion]));
+        if (claves.length === 1) {
+          activityRepo.log('product.include', 'product', claves[0], {
+            description: nameByClave.get(claves[0]),
+          });
+        } else {
+          activityRepo.log('product.include_bulk', 'product', null, {
+            count: claves.length,
+            added: claves.map((c) => ({ ref: c, name: nameByClave.get(c) })),
+          });
         }
         const removeSet = new Set(claves);
+
         const nextExcluded = new Set(
           [...excludedClaves].filter((c) => !removeSet.has(c))
         );
@@ -519,8 +538,9 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         toast.error('Error restoring products');
       }
     },
-    [excludedClaves, draftClaves, rebuildFromLastInputs]
+    [excludedClaves, excludedProducts, draftClaves, rebuildFromLastInputs]
   );
+
 
 
   const toggleDeselect = useCallback(
