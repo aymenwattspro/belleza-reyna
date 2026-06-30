@@ -232,6 +232,12 @@ const DICT = {
     orders_excluded_subtitle: 'These products are permanently excluded from ordering and do not affect totals.',
     orders_excluded_empty: 'No excluded products.',
     orders_reenable: 'Re-enable ordering',
+    orders_move_to_exclude: 'Do Not Order',
+    orders_excluded_search: 'Search excluded products...',
+    orders_restore_selected: 'Restore to Total Order',
+    orders_restore: 'Restore',
+    orders_excluded_no_match: 'No products match your search.',
+    orders_excluded_open: 'Do Not Order',
 
 
     // ── Auth ──
@@ -811,6 +817,12 @@ const DICT = {
     orders_excluded_subtitle: 'Estos productos están excluidos permanentemente de los pedidos y no afectan los totales.',
     orders_excluded_empty: 'No hay productos excluidos.',
     orders_reenable: 'Reactivar pedido',
+    orders_move_to_exclude: 'No pedir',
+    orders_excluded_search: 'Buscar productos excluidos...',
+    orders_restore_selected: 'Restaurar al Pedido Total',
+    orders_restore: 'Restaurar',
+    orders_excluded_no_match: 'Ningún producto coincide con tu búsqueda.',
+    orders_excluded_open: 'No pedir',
 
     // ── Auth ──
     login_title: 'Bienvenida de nuevo',

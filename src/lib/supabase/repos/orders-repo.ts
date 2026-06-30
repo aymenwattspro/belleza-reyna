@@ -435,6 +435,30 @@ export const ordersRepo = {
     console.log('CONFIRM DRAFT RPC CALLED');
   },
 
+  /** Bulk "Do Not Order" — exclude many products in a single upsert. */
+  async excludeProducts(list: ExcludedProduct[]): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (!supabase || list.length === 0) return;
+    const rows = list.map((p) => ({
+      clave: p.clave,
+      descripcion: p.descripcion,
+      proveedor: p.proveedor || 'General',
+      excluded_at: p.excludedAt,
+    }));
+    const { error } = await supabase
+      .from('excluded_products')
+      .upsert(rows, { onConflict: 'clave' });
+    if (error) throw error;
+  },
+
+  /** Bulk "Restore" — re-enable ordering for many claves in a single delete. */
+  async includeProducts(claves: string[]): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (!supabase || claves.length === 0) return;
+    const { error } = await supabase.from('excluded_products').delete().in('clave', claves);
+    if (error) throw error;
+  },
+
   // ── Migration helpers (one-time IndexedDB → Supabase) ───────────────────────
   async insertExcluded(list: ExcludedProduct[]): Promise<void> {
     const supabase = getSupabaseClient();
