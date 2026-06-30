@@ -11,13 +11,17 @@ import { toast } from 'sonner';
 import { useInventory } from '@/contexts/InventoryContext';
 import { useSuppliers, Supplier, SupplierInput } from '@/contexts/SupplierContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { supplierKey, resolveSupplierName } from '@/lib/utils/supplier';
 
 interface InventoryStat {
+  /** Canonical, human-readable name (first spelling seen for this supplier key). */
+  displayName: string;
   productCount: number;
   totalStockUnits: number;
   totalStockValue: number;
   outOfStockCount: number;
 }
+
 
 export default function SuppliersPage() {
   const router = useRouter();
@@ -30,13 +34,19 @@ export default function SuppliersPage() {
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
 
-  // ── Inventory stats grouped by supplier name ──────────────────────────────
+  // ── Inventory stats grouped by NORMALIZED supplier key ────────────────────
+  // Grouping by a canonical key (see supplierKey) makes the association
+  // tolerant to case, whitespace, accents and hidden characters, so a saved
+  // supplier always matches its products even when the imported `proveedor`
+  // spelling differs slightly.
   const inventoryStats = useMemo(() => {
     const map = new Map<string, InventoryStat>();
     if (!latestSnapshot) return map;
     for (const p of latestSnapshot.products) {
-      const name = p.proveedor || 'General';
-      const entry = map.get(name) ?? {
+      const displayName = resolveSupplierName(p.proveedor);
+      const key = supplierKey(displayName);
+      const entry = map.get(key) ?? {
+        displayName,
         productCount: 0,
         totalStockUnits: 0,
         totalStockValue: 0,
@@ -47,22 +57,23 @@ export default function SuppliersPage() {
       entry.totalStockUnits += stock;
       entry.totalStockValue += stock * (p.precioC || 0);
       if (stock === 0) entry.outOfStockCount++;
-      map.set(name, entry);
+      map.set(key, entry);
     }
     return map;
   }, [latestSnapshot]);
 
   // ── Supplier names found in inventory but NOT in the saved database ────────
   const unsavedInventorySuppliers = useMemo(() => {
-    const savedNames = new Set(suppliers.map((s) => s.name.trim().toLowerCase()));
+    const savedKeys = new Set(suppliers.map((s) => supplierKey(s.name)));
     const result: { name: string; stat: InventoryStat }[] = [];
-    for (const [name, stat] of inventoryStats) {
-      if (!savedNames.has(name.trim().toLowerCase())) {
-        result.push({ name, stat });
+    for (const [key, stat] of inventoryStats) {
+      if (!savedKeys.has(key)) {
+        result.push({ name: stat.displayName, stat });
       }
     }
     return result.sort((a, b) => b.stat.productCount - a.stat.productCount);
   }, [inventoryStats, suppliers]);
+
 
   // ── Filtered saved suppliers ──────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -186,7 +197,7 @@ export default function SuppliersPage() {
         {filtered.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((supplier) => {
-              const stat = inventoryStats.get(supplier.name);
+              const stat = inventoryStats.get(supplierKey(supplier.name));
               return (
                 <div
                   key={supplier.id}

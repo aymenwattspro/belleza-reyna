@@ -26,6 +26,15 @@ const DICT = {
     nav_description_pending: 'Pending orders',
     nav_activity: 'Activity',
     nav_description_activity: 'Who did what & when',
+    nav_imports: 'Imports',
+    nav_description_imports: 'Import history',
+
+    // ── Imports page ──
+    imports_title: 'Imports',
+    imports_subtitle: 'Browse every inventory file you have imported.',
+    imports_empty_title: 'No imports yet',
+    imports_empty_sub: 'Import a CSV or Excel inventory file to see its history here.',
+    imports_latest: 'Latest',
 
     // ── Activity ──
     act_title: 'Activity',
@@ -596,6 +605,15 @@ const DICT = {
     nav_description_pending: 'Pedidos pendientes',
     nav_activity: 'Actividad',
     nav_description_activity: 'Quién hizo qué y cuándo',
+    nav_imports: 'Importaciones',
+    nav_description_imports: 'Historial de importaciones',
+
+    // ── Imports page ──
+    imports_title: 'Importaciones',
+    imports_subtitle: 'Explora cada archivo de inventario que has importado.',
+    imports_empty_title: 'Aún no hay importaciones',
+    imports_empty_sub: 'Importa un archivo CSV o Excel para ver su historial aquí.',
+    imports_latest: 'Más reciente',
 
     // ── Activity ──
     act_title: 'Actividad',

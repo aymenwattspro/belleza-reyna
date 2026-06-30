@@ -6,16 +6,17 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home, LayoutDashboard, Users, ShoppingCart,
-  History, LogOut, Globe, FileText, Activity,
+  History, LogOut, Globe, FileText, Activity, Upload,
 } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useOrder } from '@/contexts/OrderContext';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface NavItem {
-  labelKey: 'nav_home' | 'nav_dashboard' | 'nav_suppliers' | 'nav_total_order' | 'nav_pending_orders' | 'nav_order_history' | 'nav_activity';
-  descKey: 'nav_description_home' | 'nav_description_dashboard' | 'nav_description_suppliers' | 'nav_description_order' | 'nav_description_pending' | 'nav_description_history' | 'nav_description_activity';
+  labelKey: 'nav_home' | 'nav_imports' | 'nav_dashboard' | 'nav_suppliers' | 'nav_total_order' | 'nav_pending_orders' | 'nav_order_history' | 'nav_activity';
+  descKey: 'nav_description_home' | 'nav_description_imports' | 'nav_description_dashboard' | 'nav_description_suppliers' | 'nav_description_order' | 'nav_description_pending' | 'nav_description_history' | 'nav_description_activity';
   href: string;
   icon: React.ElementType;
   badgeFn?: () => number | null;
@@ -23,6 +24,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { labelKey: 'nav_home',          descKey: 'nav_description_home',      href: '/inventory-hub', icon: Home },
+  { labelKey: 'nav_imports',       descKey: 'nav_description_imports',    href: '/imports',       icon: Upload },
   { labelKey: 'nav_dashboard',     descKey: 'nav_description_dashboard',  href: '/dashboard',     icon: LayoutDashboard },
   { labelKey: 'nav_suppliers',     descKey: 'nav_description_suppliers',  href: '/suppliers',     icon: Users },
   { labelKey: 'nav_total_order',   descKey: 'nav_description_order',      href: '/orders',        icon: ShoppingCart },
@@ -34,11 +36,11 @@ const NAV_ITEMS: NavItem[] = [
 export function Sidebar() {
   const pathname = usePathname();
   const { t, lang, setLang } = useLanguage();
-  const { orderLines, draftOrders } = useOrder();
+  const { orderLines } = useOrder();
 
   const { signOut } = useAuth();
   const pendingOrderCount = orderLines.filter(l => l.selected).length;
-  const draftCount = draftOrders.length;
+
 
 
   // signOut() (from AuthContext) already clears state + redirects to /login.

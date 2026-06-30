@@ -7,25 +7,32 @@ import {
   RefreshCw, X, DollarSign, Users, Box,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useInventory, InventoryProvider } from '@/contexts/InventoryContext';
+import { useInventory } from '@/contexts/InventoryContext';
 import { getStockStatus, getStatusClasses } from '@/lib/utils/adjust-order';
+import { supplierKey, productSupplierKey, resolveSupplierName } from '@/lib/utils/supplier';
 
-function SupplierDetailInner({ params }: { params: Promise<{ id: string }> }) {
+export default function SupplierDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const resolvedParams = use(params);
+  // The route param is the supplier NAME (URL-encoded). Decode it, then compare
+  // by a canonical key so products match regardless of case/spacing/accents.
   const supplierName = decodeURIComponent(resolvedParams.id);
+  const supplierDisplay = resolveSupplierName(supplierName);
 
   const { latestSnapshot, popularityScores, snapshots, loading } = useInventory();
   const [search, setSearch] = useState('');
   const [stockFilter, setStockFilter] = useState<'all' | 'green' | 'orange' | 'red'>('all');
 
-  // Products from this supplier
+  // Products from this supplier — matched by canonical supplier key so the
+  // detail page always shows exactly what the suppliers list counted.
   const supplierProducts = useMemo(() => {
     if (!latestSnapshot) return [];
+    const targetKey = supplierKey(supplierName);
     return latestSnapshot.products.filter(
-      p => (p.proveedor || 'General') === supplierName
+      p => productSupplierKey(p.proveedor) === targetKey
     );
   }, [latestSnapshot, supplierName]);
+
 
   // Products enriched with stock status
   const productsWithStatus = useMemo(() => {
@@ -64,11 +71,11 @@ function SupplierDetailInner({ params }: { params: Promise<{ id: string }> }) {
     return { total, green, orange, red, totalValue, totalUnits };
   }, [productsWithStatus]);
 
-  // Supplier behavior analytics
-  const supplierScores = useMemo(
-    () => popularityScores.filter(s => s.proveedor === supplierName),
-    [popularityScores, supplierName]
-  );
+  // Supplier behavior analytics — matched by canonical key too.
+  const supplierScores = useMemo(() => {
+    const targetKey = supplierKey(supplierName);
+    return popularityScores.filter(s => productSupplierKey(s.proveedor) === targetKey);
+  }, [popularityScores, supplierName]);
   const hasBehavior = snapshots.length >= 2 && supplierScores.length > 0;
   const avgBehaviorScore = supplierScores.length > 0
     ? supplierScores.reduce((a, b) => a + b.overallScore, 0) / supplierScores.length
@@ -98,7 +105,7 @@ function SupplierDetailInner({ params }: { params: Promise<{ id: string }> }) {
         <div className="text-center py-16">
           <Box size={48} className="mx-auto text-gray-300 mb-4" />
           <h3 className="text-lg font-semibold text-gray-500 mb-2">
-            No products found for &ldquo;{supplierName}&rdquo;
+            No products found for &ldquo;{supplierDisplay}&rdquo;
           </h3>
           <p className="text-sm text-gray-400">This supplier has no products in the current inventory.</p>
         </div>
@@ -279,13 +286,5 @@ function SupplierDetailInner({ params }: { params: Promise<{ id: string }> }) {
         </div>
       </div>
     </div>
-  );
-}
-
-export default function SupplierDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  return (
-    <InventoryProvider>
-      <SupplierDetailInner params={params} />
-    </InventoryProvider>
   );
 }
