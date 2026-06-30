@@ -39,10 +39,25 @@ export const productSettingsRepo = {
   async getAll(): Promise<ProductSettings[]> {
     const supabase = getSupabaseClient();
     if (!supabase) return [];
-    const { data, error } = await supabase.from('product_settings').select('*');
-    if (error) throw error;
-    return (data as SettingsRow[]).map(toSettings);
+    // Paginate with .range() — PostgREST caps a single request at 1000 rows,
+    // so a catalog with more than 1000 per-product settings would otherwise
+    // silently lose targets (making products look like "Pending Target").
+    const PAGE_SIZE = 1000;
+    const rows: SettingsRow[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from('product_settings')
+        .select('*')
+        .order('clave', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw error;
+      const batch = (data as SettingsRow[]) ?? [];
+      rows.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
+    }
+    return rows.map(toSettings);
   },
+
 
   /** Upsert settings for a product (keyed by clave). */
   async save(settings: ProductSettings): Promise<void> {

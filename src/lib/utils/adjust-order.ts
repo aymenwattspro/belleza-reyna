@@ -56,8 +56,12 @@ export function getStockStatus(
 
 /**
  * Returns Tailwind classes for the traffic-light status.
+ *
+ * 'pending' is a fourth, non-traffic-light state meaning "no target stock set"
+ * — we cannot know if a product is in/low/out of stock without a target, so it
+ * stays neutral (amber) until the user attaches a target stock.
  */
-export function getStatusClasses(status: 'red' | 'orange' | 'green') {
+export function getStatusClasses(status: 'red' | 'orange' | 'green' | 'pending') {
   switch (status) {
     case 'red':
       return { dot: 'bg-red-500', badge: 'bg-red-100 text-red-700', label: 'Out of Stock', text: 'text-red-600' };
@@ -65,5 +69,9 @@ export function getStatusClasses(status: 'red' | 'orange' | 'green') {
       return { dot: 'bg-orange-400', badge: 'bg-orange-100 text-orange-700', label: 'Low Stock', text: 'text-orange-500' };
     case 'green':
       return { dot: 'bg-green-500', badge: 'bg-green-100 text-green-700', label: 'In Stock', text: 'text-emerald-600' };
+    case 'pending':
+      return { dot: 'bg-amber-400', badge: 'bg-amber-100 text-amber-700', label: 'Pending Target', text: 'text-amber-600' };
   }
 }
+
+

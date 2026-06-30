@@ -26,6 +26,13 @@ import type { InventorySnapshot, ProductSnapshot } from '@/lib/types/inventory-t
 // Products per chunk. 500–1000 is the sweet spot recommended by 003_import_chunking.sql.
 const CHUNK_SIZE = 500;
 
+// PostgREST returns at most 1000 rows per request by default. Reads that can
+// exceed that (current_inventory, stock_history) MUST paginate with .range()
+// or they silently truncate — which is exactly what made the home page show
+// only 1000 of 1612 products. This is the page size used by those paginated reads.
+const PAGE_SIZE = 1000;
+
+
 // ── Row shapes (snake_case, mirrors src/lib/supabase/types.ts) ────────────────
 interface ImportRow {
   id: string;
@@ -267,18 +274,31 @@ export const inventoryRepo = {
   },
 
 
-  /** Canonical current state — one row per unique product. */
+  /**
+   * Canonical current state — one row per unique product.
+   * Paginated with .range() so catalogs larger than PostgREST's 1000-row
+   * default limit are returned in full (otherwise the list silently truncates).
+   */
   async getCurrentInventory(): Promise<CurrentInventoryItem[]> {
     const supabase = getSupabaseClient();
     if (!supabase) return [];
-    const { data, error } = await supabase
-      .from('current_inventory')
-      .select(
-        'clave, descripcion, proveedor, existencia, precio_c, precio_v, stock_objetivo, piezas, first_seen_date, last_updated_date, history_count'
-      );
-    if (error) throw error;
-    return (data as CurrentInventoryRow[]).map(toCurrentItem);
+    const rows: CurrentInventoryRow[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from('current_inventory')
+        .select(
+          'clave, descripcion, proveedor, existencia, precio_c, precio_v, stock_objetivo, piezas, first_seen_date, last_updated_date, history_count'
+        )
+        .order('clave', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw error;
+      const batch = (data as CurrentInventoryRow[]) ?? [];
+      rows.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
+    }
+    return rows.map(toCurrentItem);
   },
+
 
   /** Stock-change history for a single product (oldest → newest). */
   async getProductHistory(clave: string): Promise<StockHistoryEntry[]> {
@@ -295,19 +315,33 @@ export const inventoryRepo = {
     return (data as StockHistoryRow[]).map(toHistoryEntry);
   },
 
-  /** Entire stock-change history (oldest → newest) — used to build virtual snapshots. */
+  /**
+   * Entire stock-change history (oldest → newest) — used to build virtual snapshots.
+   * Paginated with .range() so multi-import histories larger than PostgREST's
+   * 1000-row default limit are returned in full. A secondary sort by id keeps
+   * pagination deterministic when several rows share an import_timestamp.
+   */
   async getAllStockHistory(): Promise<StockHistoryEntry[]> {
     const supabase = getSupabaseClient();
     if (!supabase) return [];
-    const { data, error } = await supabase
-      .from('stock_history')
-      .select(
-        'id, clave, descripcion, proveedor, existencia, precio_c, precio_v, stock_objetivo, piezas, import_id, import_date, import_timestamp'
-      )
-      .order('import_timestamp', { ascending: true });
-    if (error) throw error;
-    return (data as StockHistoryRow[]).map(toHistoryEntry);
+    const rows: StockHistoryRow[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from('stock_history')
+        .select(
+          'id, clave, descripcion, proveedor, existencia, precio_c, precio_v, stock_objetivo, piezas, import_id, import_date, import_timestamp'
+        )
+        .order('import_timestamp', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw error;
+      const batch = (data as StockHistoryRow[]) ?? [];
+      rows.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
+    }
+    return rows.map(toHistoryEntry);
   },
+
 
   /**
    * Bulk-upsert target stock / piezas (no new import event), via the atomic
