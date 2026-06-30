@@ -9,7 +9,9 @@ import React, {
 } from 'react';
 import { suppliersRepo, SupplierConflictError } from '@/lib/supabase/repos/suppliers-repo';
 import { subscribeTable } from '@/lib/supabase/realtime';
+import { supplierKey } from '@/lib/utils/supplier';
 import type { Supplier } from '@/lib/db/suppliers-db';
+
 
 export type { Supplier } from '@/lib/db/suppliers-db';
 
@@ -68,15 +70,19 @@ export function SupplierProvider({ children }: { children: React.ReactNode }) {
   // Realtime: re-fetch whenever any user changes the shared suppliers table
   useEffect(() => subscribeTable('suppliers', refresh), [refresh]);
 
+  // Compare by canonical key so "Beauty System", "beauty system " and
+  // "BEAUTY  SYSTEM" all count as the same supplier — preventing duplicate
+  // records that would later split a supplier's products across two pages.
   const nameExists = useCallback(
     (name: string, exceptId?: string) => {
-      const normalized = name.trim().toLowerCase();
+      const key = supplierKey(name);
       return suppliers.some(
-        (s) => s.id !== exceptId && s.name.trim().toLowerCase() === normalized
+        (s) => s.id !== exceptId && supplierKey(s.name) === key
       );
     },
     [suppliers]
   );
+
 
   const addSupplier = useCallback(
     async (input: SupplierInput): Promise<Supplier | null> => {
@@ -146,11 +152,12 @@ export function SupplierProvider({ children }: { children: React.ReactNode }) {
 
   const findByName = useCallback(
     (name: string): Supplier | null => {
-      const normalized = name.trim().toLowerCase();
-      return suppliers.find((s) => s.name.trim().toLowerCase() === normalized) || null;
+      const key = supplierKey(name);
+      return suppliers.find((s) => supplierKey(s.name) === key) || null;
     },
     [suppliers]
   );
+
 
   return (
     <SupplierContext.Provider
