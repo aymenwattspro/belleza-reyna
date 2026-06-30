@@ -68,6 +68,11 @@ interface OrderContextType {
   excludeProduct: (product: { clave: string; descripcion: string; proveedor: string }) => Promise<void>;
   includeProduct: (clave: string) => Promise<void>;
 
+  // Bulk exclusion actions ("Do Not Order" / "Restore")
+  excludeProducts: (products: { clave: string; descripcion: string; proveedor: string }[]) => Promise<void>;
+  includeProducts: (claves: string[]) => Promise<void>;
+
+
   confirmOrder: (selectedLines: OrderLineItem[]) => Promise<void>;
 
   deleteConfirmedOrder: (orderId: string) => Promise<void>;
@@ -457,6 +462,67 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
     [excludedClaves, draftClaves, rebuildFromLastInputs]
   );
 
+  /** Bulk "Do Not Order": exclude many products in one round-trip. */
+  const excludeProducts = useCallback(
+    async (products: { clave: string; descripcion: string; proveedor: string }[]) => {
+      if (products.length === 0) return;
+      try {
+        const now = new Date().toISOString();
+        const records: ExcludedProduct[] = products.map((p) => ({
+          clave: p.clave,
+          descripcion: p.descripcion,
+          proveedor: p.proveedor || 'General',
+          excludedAt: now,
+        }));
+        await ordersRepo.excludeProducts(records);
+        for (const r of records) {
+          activityRepo.log('product.exclude', 'product', r.clave, {
+            description: r.descripcion,
+            supplier: r.proveedor,
+          });
+        }
+        const clavesSet = new Set(records.map((r) => r.clave));
+        setExcludedProducts((prev) => [
+          ...prev.filter((p) => !clavesSet.has(p.clave)),
+          ...records,
+        ]);
+        // Drop them from the current order view right away.
+        setOrderLines((prev) => prev.filter((l) => !clavesSet.has(l.clave)));
+        toast.success(`${records.length} product(s) moved to Do Not Order`);
+      } catch (e) {
+        console.error(e);
+        toast.error('Error excluding products');
+      }
+    },
+    []
+  );
+
+  /** Bulk "Restore": re-enable ordering for many products in one round-trip. */
+  const includeProducts = useCallback(
+    async (claves: string[]) => {
+      if (claves.length === 0) return;
+      try {
+        await ordersRepo.includeProducts(claves);
+        for (const clave of claves) {
+          activityRepo.log('product.include', 'product', clave);
+        }
+        const removeSet = new Set(claves);
+        const nextExcluded = new Set(
+          [...excludedClaves].filter((c) => !removeSet.has(c))
+        );
+        setExcludedProducts((prev) => prev.filter((p) => !removeSet.has(p.clave)));
+        // Rebuild so restored products reappear in the order if still below target.
+        rebuildFromLastInputs(nextExcluded, deselectedClavesRef.current, draftClaves);
+        toast.success(`${claves.length} product(s) restored to Total Order`);
+      } catch (e) {
+        console.error(e);
+        toast.error('Error restoring products');
+      }
+    },
+    [excludedClaves, draftClaves, rebuildFromLastInputs]
+  );
+
+
   const toggleDeselect = useCallback(
     async (clave: string) => {
       try {
@@ -833,7 +899,10 @@ export function OrderProvider({ children }: { children: React.ReactNode }) {
         batchToggleSelect,
         excludeProduct,
         includeProduct,
+        excludeProducts,
+        includeProducts,
         confirmOrder,
+
 
         deleteConfirmedOrder,
         refreshHistory,
