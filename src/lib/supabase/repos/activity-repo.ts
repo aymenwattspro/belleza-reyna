@@ -64,6 +64,17 @@ export interface ActorRef {
   actorEmail?: string | null;
 }
 
+/**
+ * Query options for `getActivity`. `actorEmail` / `action` are applied
+ * server-side so filtering spans the ENTIRE history, not just loaded rows.
+ */
+export interface ActivityQuery {
+  limit?: number;
+  actorEmail?: string;
+  action?: string;
+}
+
+
 // All columns we read for an activity row.
 const ACTIVITY_COLUMNS =
   'id, action, entity_type, entity_id, actor_id, actor_email, metadata, created_at, ' +
@@ -100,16 +111,27 @@ function mapRow(r: any): ActivityEntry {
  * shares the same feed, so the Activity tab shows what everyone is doing.
  */
 export const activityRepo = {
-  /** Most-recent-first activity (default 200 rows). */
-  async getActivity(limit = 200): Promise<ActivityEntry[]> {
+  /**
+   * Most-recent-first activity. Accepts either a plain row limit (legacy) or a
+   * query object. The `actorEmail` / `action` filters are applied SERVER-SIDE so
+   * filtering reaches the ENTIRE history, not just the rows already loaded.
+   */
+  async getActivity(arg: number | ActivityQuery = 200): Promise<ActivityEntry[]> {
     const supabase = getSupabaseClient();
     if (!supabase) return [];
 
-    const { data, error } = await supabase
+    const opts: ActivityQuery = typeof arg === 'number' ? { limit: arg } : arg;
+    const limit = opts.limit ?? 200;
+
+    let query = supabase
       .from('audit_log')
       .select(ACTIVITY_COLUMNS)
-      .order('created_at', { ascending: false })
-      .limit(limit);
+      .order('created_at', { ascending: false });
+
+    if (opts.actorEmail) query = query.eq('actor_email', opts.actorEmail);
+    if (opts.action) query = query.eq('action', opts.action);
+
+    const { data, error } = await query.limit(limit);
 
     if (error) {
       console.error('getActivity error:', error);
@@ -117,6 +139,29 @@ export const activityRepo = {
     }
     return (data ?? []).map(mapRow);
   },
+
+  /**
+   * Distinct actor emails + action types across the WHOLE audit_log, so the
+   * Activity filters can list every user/action since the beginning of history
+   * (not just what is currently loaded). Falls back to an empty result when the
+   * `activity_filter_options` RPC (migration 012) isn't applied yet — the page
+   * then derives options from loaded rows.
+   */
+  async getFilterOptions(): Promise<{ actors: string[]; actions: string[] }> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return { actors: [], actions: [] };
+    try {
+      const { data, error } = await supabase.rpc('activity_filter_options' as never);
+
+      if (error || !data) return { actors: [], actions: [] };
+      const d = data as { actors?: string[]; actions?: string[] };
+      return { actors: d.actors ?? [], actions: d.actions ?? [] };
+    } catch (e) {
+      console.error('getFilterOptions error:', e);
+      return { actors: [], actions: [] };
+    }
+  },
+
 
   /** Fetch a single activity entry by id (for the details page). */
   async getActivityById(id: number): Promise<ActivityEntry | null> {

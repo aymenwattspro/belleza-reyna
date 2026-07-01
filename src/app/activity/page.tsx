@@ -34,14 +34,27 @@ export default function ActivityPage() {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
+  // Distinct users/actions across the WHOLE history (migration 012 RPC) so the
+  // filter dropdowns list everything since the beginning — not just loaded rows.
+  const [filterOptions, setFilterOptions] = useState<{ actors: string[]; actions: string[] }>({
+    actors: [],
+    actions: [],
+  });
+
   const refresh = useCallback(async () => {
-    // Fetch one extra row to know whether more history exists beyond `limit`.
-    const data = await activityRepo.getActivity(limit + 1);
+    // The user/action filters are applied SERVER-SIDE so filtering spans the
+    // ENTIRE history, not just loaded rows. Fetch one extra row to know whether
+    // more history exists beyond `limit`.
+    const data = await activityRepo.getActivity({
+      limit: limit + 1,
+      actorEmail: userFilter !== 'all' ? userFilter : undefined,
+      action: actionFilter !== 'all' ? actionFilter : undefined,
+    });
     setHasMore(data.length > limit);
     setEntries(data.slice(0, limit));
     setLoading(false);
     setLoadingMore(false);
-  }, [limit]);
+  }, [limit, userFilter, actionFilter]);
 
 
   useEffect(() => {
@@ -53,6 +66,19 @@ export default function ActivityPage() {
     return () => unsub();
   }, [refresh]);
 
+  // Load the full-history filter options once on mount.
+  useEffect(() => {
+    activityRepo.getFilterOptions().then(setFilterOptions).catch(() => {});
+  }, []);
+
+  // When a server-side filter (user/action) changes, restart paging from the
+  // first page so results are drawn from the whole history, not a stale offset.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLimit(PAGE_SIZE);
+  }, [userFilter, actionFilter]);
+
+
 
   const dayLabelOf = useCallback((date: Date) => {
     if (isToday(date)) return t('act_today');
@@ -60,18 +86,29 @@ export default function ActivityPage() {
     return format(date, 'EEEE, dd MMM yyyy', dfLocale);
   }, [t, dfLocale]);
 
-  // Distinct users / actions for the filter dropdowns
+  // Distinct users / actions for the filter dropdowns. Prefer the full-history
+  // options (every user/action ever recorded), falling back to the loaded rows
+  // only when the RPC isn't available yet.
   const userOptions = useMemo(() => {
+    if (filterOptions.actors.length) return filterOptions.actors;
     const set = new Set<string>();
     for (const e of entries) if (e.actorEmail) set.add(e.actorEmail);
     return Array.from(set).sort();
-  }, [entries]);
+  }, [filterOptions.actors, entries]);
 
   const actionOptions = useMemo(() => {
+    const actions = filterOptions.actions.length
+      ? filterOptions.actions
+      : Array.from(new Set(entries.map((e) => e.action)));
     const map = new Map<string, string>();
-    for (const e of entries) if (!map.has(e.action)) map.set(e.action, labelOf(e));
+    for (const a of actions) {
+      // `labelOf` only reads `action` + `entityType`, so a minimal synthetic
+      // entry is enough to render the translated action label.
+      if (!map.has(a)) map.set(a, labelOf({ action: a, entityType: '' } as unknown as ActivityEntry));
+    }
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [entries, labelOf]);
+  }, [filterOptions.actions, entries, labelOf]);
+
 
   const anyFilter = userFilter !== 'all' || actionFilter !== 'all' || !!fromDate || !!toDate || !!search.trim();
   const clearFilters = () => { setUserFilter('all'); setActionFilter('all'); setFromDate(''); setToDate(''); setSearch(''); };
@@ -136,13 +173,8 @@ export default function ActivityPage() {
                 </button>
               )}
             </div>
-            <button
-              onClick={refresh}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
-            >
-              <RefreshCw size={15} className="text-indigo-500" /> {t('act_refresh')}
-            </button>
           </div>
+
         </div>
 
         {/* Filter bar */}
