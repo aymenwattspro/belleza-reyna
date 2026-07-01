@@ -332,12 +332,23 @@ export default function SuppliersPage() {
                   <Building2 size={13} className="text-amber-400" />
                   <span className="text-xs font-medium text-gray-700">{name}</span>
                   <span className="text-[10px] text-gray-400">{stat.productCount}p</span>
+                  {/* View this recognized supplier's products directly — matched
+                      by the exact recognized name, so products are always visible
+                      even before the supplier is saved to the database. */}
+                  <button
+                    onClick={() => router.push(`/suppliers/${encodeURIComponent(name)}`)}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-1 rounded-lg transition-colors"
+                    title={t('sup_view_products')}
+                  >
+                    <ChevronRight size={11} /> {t('sup_view_products')}
+                  </button>
                   <button
                     onClick={() => handleQuickAdd(name)}
                     className="flex items-center gap-1 text-[11px] font-semibold text-white bg-amber-500 hover:bg-amber-600 px-2 py-1 rounded-lg transition-colors"
                   >
                     <Plus size={11} /> {t('sup_add_to_db')}
                   </button>
+
                 </div>
               ))}
             </div>
