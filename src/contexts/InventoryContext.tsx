@@ -7,6 +7,8 @@ import { inventoryRepo } from '@/lib/supabase/repos/inventory-repo';
 import { subscribeTable } from '@/lib/supabase/realtime';
 import { useAuth } from '@/contexts/AuthContext';
 import { InventorySnapshot, ProductSnapshot } from '@/lib/types/inventory-timeline';
+import { analyzeCatalog, type ProductAnalytics, type ProductInput } from '@/lib/utils/demand-analytics';
+
 
 // ── Popularity / behaviour score ─────────────────────────────────────────────
 
@@ -30,8 +32,12 @@ interface InventoryContextType {
   snapshots: InventorySnapshot[];       // Virtual snapshots from stock_history (for charts)
   latestSnapshot: InventorySnapshot | null; // Canonical current state from current_inventory
   popularityScores: PopularityScore[];
+  /** Canonical demand + priority + forecast per product (new engine, additive —
+   *  computed by src/lib/utils/demand-analytics.ts, sorted by priority desc). */
+  demandAnalytics: ProductAnalytics[];
 
   // Loading
+
   loading: boolean;
 
   // Actions
@@ -48,7 +54,10 @@ interface InventoryContextType {
   // Queries
   getProductHistory: (clave: string) => { date: Date; existencia: number }[];
   getPopularityScore: (clave: string) => PopularityScore | null;
+  /** Canonical demand/priority/forecast for one product (new engine). */
+  getProductAnalytics: (clave: string) => ProductAnalytics | null;
 }
+
 
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
 
@@ -157,7 +166,42 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     return scores.sort((a, b) => b.overallScore - a.overallScore);
   }, [snapshots, latestSnapshot]);
 
+  // ── Canonical demand analytics (new engine — additive, side-by-side) ─────────
+  // Reuses the SAME stock_history observations, but rebuilds the COMPLETE
+  // observation grid (flat imports included) and computes robust demand, forecast
+  // and priority via src/lib/utils/demand-analytics.ts. This does NOT replace
+  // popularityScores/overallScore — both are exposed until the new score is
+  // validated across several import cycles.
+  const demandAnalytics = React.useMemo((): ProductAnalytics[] => {
+    if (snapshots.length < 2 || !latestSnapshot) return [];
+
+    // Grid = inventory (snapshot-type) imports only. Target-stock imports carry no
+    // stock observation and must not create phantom flat intervals.
+    const invSnaps = snapshots.filter(s => s.importType !== 'targetstock');
+    if (invSnaps.length < 2) return [];
+    const gridTimes = invSnaps.map(s => s.date.getTime());
+    const nowT = latestSnapshot.timestamp;
+
+    const inputs: ProductInput[] = latestSnapshot.products.map(product => {
+      const recordedPoints = invSnaps
+        .map(s => {
+          const p = s.products.find(pr => pr.clave === product.clave);
+          return p ? { t: s.date.getTime(), stock: Math.max(0, p.existencia) } : null;
+        })
+        .filter((h): h is { t: number; stock: number } => h !== null);
+      return {
+        clave: product.clave,
+        currentStock: Math.max(0, product.existencia),
+        recordedPoints,
+      };
+    });
+
+    return analyzeCatalog(inputs, gridTimes, nowT)
+      .sort((a, b) => b.priority.score - a.priority.score);
+  }, [snapshots, latestSnapshot]);
+
   // ── refreshData ────────────────────────────────────────────────────────────
+
 
   const refreshData = useCallback(async () => {
     try {
@@ -375,6 +419,13 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     return popularityScores.find(s => s.clave === clave) ?? null;
   }, [popularityScores]);
 
+  // ── getProductAnalytics (new engine) ───────────────────────────────────────
+
+  const getProductAnalytics = useCallback((clave: string): ProductAnalytics | null => {
+    return demandAnalytics.find(a => a.clave === clave) ?? null;
+  }, [demandAnalytics]);
+
+
   // ── Bootstrap ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -411,6 +462,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         snapshots,
         latestSnapshot,
         popularityScores,
+        demandAnalytics,
         loading,
         refreshData,
         addSnapshot,
@@ -421,7 +473,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         recordTargetImport,
         getProductHistory,
         getPopularityScore,
+        getProductAnalytics,
       }}
+
 
     >
       {children}
