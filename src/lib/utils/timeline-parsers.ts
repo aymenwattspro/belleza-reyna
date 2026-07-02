@@ -79,7 +79,15 @@ export function detectColumns(headerRow: string[]): Omit<ColMapping, 'headerRowI
     );
     precioVIdx = next?.i ?? -1;
   }
-  const proveedorIdx = find('proveedor', 'supplier', 'marca', 'brand');
+  // IMPORTANT: only a real supplier column counts here. We deliberately do NOT
+  // match 'marca'/'brand': in a cosmetics catalogue the brand (e.g. "PINK UP")
+  // — and category labels like "GENERAL" — are NOT the supplier. Treating a
+  // brand/category column as the supplier used to silently override the supplier
+  // chosen at import time, scattering one supplier's products across others
+  // (e.g. ARI products landing under "General"). Supplier assignment is instead
+  // driven by the single supplier chosen in the import dialog (see ImportManager).
+  const proveedorIdx = find('proveedor', 'supplier');
+
   const stockObjetivoIdx = findByPatterns(
     h,
     ['stock_objetivo', 'stock-objetivo', 'stockobjetivo'],

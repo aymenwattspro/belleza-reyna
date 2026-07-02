@@ -23,7 +23,7 @@ import { ImportManager } from '@/components/inventory/ImportManager';
 
 import { getStockStatus, getStatusClasses } from '@/lib/utils/adjust-order';
 import { resolveSupplierName } from '@/lib/utils/supplier';
-import { InventorySnapshot } from '@/lib/types/inventory-timeline';
+
 
 export default function InventoryHubPage() {
   const router = useRouter();
@@ -106,20 +106,42 @@ export default function InventoryHubPage() {
     XLSX.writeFile(wb, `pending-targets-${dateFnsFormat(new Date(), 'yyyy-MM-dd')}.xlsx`);
   }, [inventoryProducts]);
 
+  // Precompute each product's stock time-series ONCE with a single pass over all
+  // snapshots. Previously both this list and EVERY behaviour row independently
+  // ran `snapshots.map(s => s.products.find(...))`, which is O(products² ·
+  // snapshots) and made the page slow as the catalogue grew. Building an index
+  // first makes every subsequent lookup O(1). The produced points are identical
+  // to the old per-row scan (same snapshot order, same {date, stock} values).
+  const stockSeriesByClave = useMemo(() => {
+    const map = new Map<string, { date: string; stock: number }[]>();
+    for (const s of snapshots) {
+      const d = format(s.date, 'dd/MM');
+      for (const p of s.products) {
+        const point = { date: d, stock: Math.max(0, p.existencia) };
+        const arr = map.get(p.clave);
+        if (arr) arr.push(point);
+        else map.set(p.clave, [point]);
+      }
+    }
+    return map;
+  }, [snapshots]);
+
   const behaviorProducts = useMemo(() => {
     if (snapshots.length < 2 || !latestSnapshot) return [];
-    const claves = new Set<string>();
-    for (const s of snapshots) for (const p of s.products) claves.add(p.clave);
+    // O(1) latest-snapshot lookup instead of `.find()` per product.
+    const latestByClave = new Map(latestSnapshot.products.map((p) => [p.clave, p]));
     const result: { clave: string; descripcion: string; proveedor: string; latestStock: number; pointCount: number }[] = [];
-    for (const clave of claves) {
-      const history = snapshots.map((s) => s.products.find((p) => p.clave === clave)).filter(Boolean);
-      if (history.length < 2) continue;
-      const latest = latestSnapshot.products.find((p) => p.clave === clave);
+    for (const [clave, series] of stockSeriesByClave) {
+      // `series.length` == number of snapshots that contain this product, which
+      // is exactly the old `history.length` (>= 2 required to show a trend).
+      if (series.length < 2) continue;
+      const latest = latestByClave.get(clave);
       if (!latest) continue;
-      result.push({ clave, descripcion: latest.descripcion, proveedor: resolveSupplierName(latest.proveedor), latestStock: Math.max(0, latest.existencia), pointCount: history.length });
+      result.push({ clave, descripcion: latest.descripcion, proveedor: resolveSupplierName(latest.proveedor), latestStock: Math.max(0, latest.existencia), pointCount: series.length });
     }
     return result.sort((a, b) => a.descripcion.localeCompare(b.descripcion));
-  }, [snapshots, latestSnapshot]);
+  }, [stockSeriesByClave, latestSnapshot, snapshots]);
+
 
   const filteredBehavior = useMemo(() => {
     if (!behaviorSearch.trim()) return behaviorProducts;
@@ -221,7 +243,8 @@ export default function InventoryHubPage() {
                     <div className="text-xs text-gray-400 px-1 mb-1">{filteredBehavior.length} {t('hub_data_points')}</div>
                     {filteredBehavior.map((p) => (
                       <BehaviorProductRow key={p.clave} clave={p.clave} descripcion={p.descripcion} proveedor={p.proveedor}
-                        latestStock={p.latestStock} pointCount={p.pointCount} snapshots={snapshots}
+                        latestStock={p.latestStock} pointCount={p.pointCount} series={stockSeriesByClave.get(p.clave) ?? []}
+
                         expanded={expandedSnap === p.clave}
                         onExpand={() => setExpandedSnap(expandedSnap === p.clave ? null : p.clave)}
                         onClick={() => router.push(`/product/${encodeURIComponent(p.clave)}`)} />
@@ -343,18 +366,19 @@ export default function InventoryHubPage() {
   );
 }
 
-function BehaviorProductRow({ clave, descripcion, proveedor, latestStock, pointCount, snapshots, expanded, onExpand, onClick }:
-  { clave: string; descripcion: string; proveedor: string; latestStock: number; pointCount: number; snapshots: InventorySnapshot[]; expanded: boolean; onExpand: () => void; onClick: () => void; }) {
+function BehaviorProductRow({ clave, descripcion, proveedor, latestStock, pointCount, series, expanded, onExpand, onClick }:
+  { clave: string; descripcion: string; proveedor: string; latestStock: number; pointCount: number; series: { date: string; stock: number }[]; expanded: boolean; onExpand: () => void; onClick: () => void; }) {
+  // `series` is precomputed once by the parent (single pass over all snapshots),
+  // so each row no longer re-scans every snapshot's product list. We only sort a
+  // copy here to preserve the exact chronological order used before.
   const chartData = useMemo(() => {
-    return snapshots.map((s) => {
-      const p = s.products.find((pr) => pr.clave === clave);
-      return p ? { date: format(s.date, 'dd/MM'), stock: Math.max(0, p.existencia) } : null;
-    }).filter(Boolean).sort((a, b) => {
-      const [ad, am] = (a!.date).split('/');
-      const [bd, bm] = (b!.date).split('/');
+    return [...series].sort((a, b) => {
+      const [ad, am] = a.date.split('/');
+      const [bd, bm] = b.date.split('/');
       return parseInt(am + ad) - parseInt(bm + bd);
-    }) as { date: string; stock: number }[];
-  }, [clave, snapshots]);
+    });
+  }, [series]);
+
 
   const trend = useMemo(() => {
     if (chartData.length < 2) return 'stable';

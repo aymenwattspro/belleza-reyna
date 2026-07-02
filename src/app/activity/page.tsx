@@ -42,19 +42,26 @@ export default function ActivityPage() {
   });
 
   const refresh = useCallback(async () => {
-    // The user/action filters are applied SERVER-SIDE so filtering spans the
-    // ENTIRE history, not just loaded rows. Fetch one extra row to know whether
-    // more history exists beyond `limit`.
+    // User / action / date filters are ALL applied SERVER-SIDE so filtering spans
+    // the ENTIRE history, not just loaded rows. The date range is converted from
+    // the picker's local calendar days into absolute instants (start-of-day →
+    // end-of-day, local time) so a chosen day is matched exactly. Fetch one extra
+    // row to know whether more history exists beyond `limit`.
+    const fromIso = fromDate ? new Date(`${fromDate}T00:00:00`).toISOString() : undefined;
+    const toIso = toDate ? new Date(`${toDate}T23:59:59.999`).toISOString() : undefined;
     const data = await activityRepo.getActivity({
       limit: limit + 1,
       actorEmail: userFilter !== 'all' ? userFilter : undefined,
       action: actionFilter !== 'all' ? actionFilter : undefined,
+      fromIso,
+      toIso,
     });
     setHasMore(data.length > limit);
     setEntries(data.slice(0, limit));
     setLoading(false);
     setLoadingMore(false);
-  }, [limit, userFilter, actionFilter]);
+  }, [limit, userFilter, actionFilter, fromDate, toDate]);
+
 
 
   useEffect(() => {
@@ -71,16 +78,13 @@ export default function ActivityPage() {
     activityRepo.getFilterOptions().then(setFilterOptions).catch(() => {});
   }, []);
 
-  // When a server-side filter (user/action) changes, restart paging from the
-  // first page so results are drawn from the whole history, not a stale offset.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLimit(PAGE_SIZE);
-  }, [userFilter, actionFilter]);
-
-
+  // NOTE: changing a filter intentionally does NOT reset any other filter or the
+  // loaded window — every filter keeps its value while you adjust another. The
+  // `refresh` callback already re-queries the server with the combined filters
+  // (user + action + date range), so results update without losing state.
 
   const dayLabelOf = useCallback((date: Date) => {
+
     if (isToday(date)) return t('act_today');
     if (isYesterday(date)) return t('act_yesterday');
     return format(date, 'EEEE, dd MMM yyyy', dfLocale);
@@ -113,22 +117,18 @@ export default function ActivityPage() {
   const anyFilter = userFilter !== 'all' || actionFilter !== 'all' || !!fromDate || !!toDate || !!search.trim();
   const clearFilters = () => { setUserFilter('all'); setActionFilter('all'); setFromDate(''); setToDate(''); setSearch(''); };
 
-  // Apply all filters
+  // User / action / date filters are already applied SERVER-SIDE (whole history),
+  // so the only client-side refinement left is the free-text search box, which
+  // matches within the rows currently loaded.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    if (!q) return entries;
     return entries.filter((e) => {
-      if (userFilter !== 'all' && e.actorEmail !== userFilter) return false;
-      if (actionFilter !== 'all' && e.action !== actionFilter) return false;
-      const day = format(new Date(e.createdAt), 'yyyy-MM-dd');
-      if (fromDate && day < fromDate) return false;
-      if (toDate && day > toDate) return false;
-      if (q) {
-        const hay = `${e.actorEmail ?? ''} ${e.action} ${e.entityType} ${labelOf(e)} ${JSON.stringify(e.metadata)}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
+      const hay = `${e.actorEmail ?? ''} ${e.action} ${e.entityType} ${labelOf(e)} ${JSON.stringify(e.metadata)}`.toLowerCase();
+      return hay.includes(q);
     });
-  }, [entries, userFilter, actionFilter, fromDate, toDate, search, labelOf]);
+  }, [entries, search, labelOf]);
+
 
   // Group by calendar day
   const groups = useMemo(() => {
