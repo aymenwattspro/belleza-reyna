@@ -22,8 +22,36 @@
 create extension if not exists "pgcrypto";
 
 -- ──────────────────────────────────────────────────────────────────────────────
+--  PREREQUISITE: public.profiles (approval table)
+--
+--  is_approved() below reads public.profiles. On the PRODUCTION database this
+--  table was created first by the root-level supabase-approval-migration.sql
+--  (run manually — see header above). Automated runners, however (Supabase branch
+--  previews / any CI that applies supabase/migrations/*.sql against a fresh
+--  database), never execute that root-level file, so profiles would not exist and
+--  this migration used to fail with:
+--      ERROR: relation "public.profiles" does not exist (42P01)
+--
+--  We therefore create the table here, IDEMPOTENTLY, so 001 is self-contained.
+--  This is a no-op on databases where profiles already exists (IF NOT EXISTS /
+--  ADD COLUMN IF NOT EXISTS). The FULL approval setup — auth trigger, RLS
+--  policies and backfill — still lives in supabase-approval-migration.sql and is
+--  unchanged; only the minimal shape is guaranteed here so is_approved() compiles.
+-- ──────────────────────────────────────────────────────────────────────────────
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  created_at timestamptz default now(),
+  is_approved boolean default false,
+  role text default 'user'
+);
+alter table public.profiles add column if not exists is_approved boolean default false;
+alter table public.profiles add column if not exists role text default 'user';
+
+-- ──────────────────────────────────────────────────────────────────────────────
 --  HELPERS
 -- ──────────────────────────────────────────────────────────────────────────────
+
 
 -- Is the current user approved? (used in every RLS policy)
 create or replace function public.is_approved()
