@@ -1,5 +1,6 @@
 'use client';
 
+
 import { getSupabaseClient } from '../client';
 import { getAuditContext } from '@/lib/audit/context';
 
@@ -72,7 +73,12 @@ export interface ActivityQuery {
   limit?: number;
   actorEmail?: string;
   action?: string;
+  /** Inclusive lower bound on created_at (ISO instant). */
+  fromIso?: string;
+  /** Inclusive upper bound on created_at (ISO instant). */
+  toIso?: string;
 }
+
 
 
 // All columns we read for an activity row.
@@ -130,8 +136,11 @@ export const activityRepo = {
 
     if (opts.actorEmail) query = query.eq('actor_email', opts.actorEmail);
     if (opts.action) query = query.eq('action', opts.action);
+    if (opts.fromIso) query = query.gte('created_at', opts.fromIso);
+    if (opts.toIso) query = query.lte('created_at', opts.toIso);
 
     const { data, error } = await query.limit(limit);
+
 
     if (error) {
       console.error('getActivity error:', error);

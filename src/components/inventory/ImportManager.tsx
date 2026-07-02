@@ -305,8 +305,20 @@ export function ImportManager({ children, onImported }: ImportManagerProps) {
       // Canonicalize the chosen supplier once so the snapshot, the saved
       // supplier record and every product row all agree on the exact name.
       const supplierLabel = resolveSupplierName(supplier);
-      const effectiveMapping = mode === 'targetstock' ? { ...mapping, existenciaIdx: -1 } : mapping;
+      // The supplier chosen in this dialog is AUTHORITATIVE for the entire file.
+      // Force `proveedorIdx = -1` so every product is assigned to `supplierLabel`
+      // and no stray per-row column (brand/category/marca) can scatter this
+      // supplier's products under a different one. This is why "one import = one
+      // supplier": if you create/select a supplier at import, all its products
+      // belong to it, and re-importing an existing supplier updates those same
+      // products in place (matched by clave in current_inventory).
+      const effectiveMapping = {
+        ...mapping,
+        proveedorIdx: -1,
+        ...(mode === 'targetstock' ? { existenciaIdx: -1 } : {}),
+      };
       const products = applyMappingToRows(preview.rawRows, effectiveMapping, supplierLabel);
+
       if (products.length === 0) { toast.error(t('import_no_valid_products')); return; }
 
       // Persist the supplier permanently so it can be reused in future orders
